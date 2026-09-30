@@ -16,7 +16,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -34,7 +34,7 @@
   <div class="page-top">
     <div class="page-eyebrow">Documentação / Regras de Negócio</div>
     <h1 class="page-title">Regras de <em>Negócio</em></h1>
-    <p class="page-subtitle">v2.0.11 · Abril/2026 — Cálculos de valores, situações, sigilo e mapeamentos</p>
+    <p class="page-subtitle">v2.0.12 · Setembro/2026 — Cálculos de valores, situações, sigilo e mapeamentos</p>
   </div>
 
   <!-- Cod_licitacao -->
@@ -110,9 +110,14 @@
       </table>
     </div>
 
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div><strong>Exceção para subitens de grupo (v2.0.12):</strong> nos subitens (<code>item.tipo = 'S'</code>), a proposta do vencedor vem <strong>antes</strong> do melhor valor: negociado → lance → <strong>proposta do vencedor</strong> → melhor valor. Em disputas por grupo, muitos subitens não têm lance nem negociação próprios, e o <code>melhor_valor_proposta_lance_calculado</code> é o menor valor entre <em>todos</em> os participantes, não o do vencedor. Com a exceção, a diferença entre a soma dos subitens e o total homologado dos grupos caiu de R$ 6.136.866,85 para R$ 2.856,14 (0,0004%).</div>
+    </div>
+
 
     <h3 class="sub-title">FaseExterna — Adjudicação por Grupo (v2.0.11)</h3>
-    <p class="section-desc" style="margin-bottom:12px;">No FaseExterna, licitações podem ter itens agrupados. O cabeçalho do grupo tem <code>numero_item &lt; 0</code> e carrega o valor total já consolidado do grupo. Os subitens (<code>numero_item &gt; 0</code>) nunca têm proposta adjudicada registrada.</p>
+    <p class="section-desc" style="margin-bottom:12px;">No FaseExterna, licitações podem ter itens agrupados. O cabeçalho do grupo tem <code>numero_item &lt; 0</code> e carrega o valor total já consolidado do grupo. Os subitens (<code>numero_item &gt; 0</code>) não têm adjudicação na própria linha: ela está na proposta do grupo (<code>proposta_item.tipo_item = 'G'</code>), cujo <code>id_item</code> aponta para o cabeçalho.</p>
     <div class="callout callout-info">
       <span class="callout-icon">ℹ️</span>
       <div><strong>Verificado empiricamente em 14/04/2026:</strong> 116.094 grupos analisados — 100% com adjudicação exclusivamente no cabeçalho. Por isso a CTE <code>valores_agregados</code> usa lógica condicional: valor estimado vem dos subitens; valor adjudicado vem dos cabeçalhos + itens avulsos (sem grupo).</div>
@@ -126,6 +131,39 @@
           <tr><td>&gt; 0 com grupo</td><td>Subitem de grupo</td><td>✅ Usar</td><td>Ignorado — adjudicação está no cabeçalho</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <h3 class="sub-title">FaseExterna — Itens Agrupados no Nível do Item (v2.0.12)</h3>
+    <p class="section-desc" style="margin-bottom:12px;">A tabela acima vale para os agregados da licitação. No nível do <strong>item</strong>, a <code>proposta_item</code> guarda três formas de linha, ligadas por <code>id_proposta_grupo</code>:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>tipo_item</th><th>O que a linha registra</th><th>situacao</th></tr></thead>
+        <tbody>
+          <tr><td>'I' — item não agrupado</td><td>Valores <strong>e</strong> julgamento na mesma linha</td><td>Preenchida quando julgada</td></tr>
+          <tr><td>'G' — proposta do grupo</td><td>O <strong>julgamento</strong> da proposta do fornecedor para o grupo inteiro; <code>id_item</code> aponta para o cabeçalho</td><td>Preenchida quando julgada</td></tr>
+          <tr><td>'S' — subitem de grupo</td><td>Apenas os <strong>valores</strong> do fornecedor naquele subitem</td><td>Praticamente sempre NULL</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div><strong>Correção v2.0.12 — subitens sem fornecedor vencedor:</strong> a view de itens filtrava <code>situacao = '6'</code> na linha do subitem, que nunca tem esse valor. Resultado: 12.163 subitens em SC (100% da classe, ~23% dos itens do FaseExterna) sem fornecedor nem valor homologado. Agora o subitem herda o julgamento do grupo: <code>COALESCE(pg.situacao, p.situacao) = '6'</code>. Os valores do subitem são próprios — o valor do grupo não é rateado.</div>
+    </div>
+
+    <h3 class="sub-title">Número do Grupo (v2.0.12)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Fonte</th><th>Regra</th></tr></thead>
+        <tbody>
+          <tr><td>FaseExterna</td><td><code>item.numero_grupo</code> <strong>não</strong> é o número do grupo: é uma referência ao <code>numero_item</code> do cabeçalho. Os cabeçalhos são numerados em ordem inversa (<code>-N</code> = Grupo 1, <code>-1</code> = último grupo). O número real vem da <code>descricao</code> do cabeçalho, no padrão <code>'Grupo N'</code> (gerada pelo sistema, 100% no padrão).</td></tr>
+          <tr><td>Comprasnet</td><td><code>codGrupo = 0</code> é o único sentinela (sem grupo) e vira NULL com <code>NULLIF(ti.codGrupo, 0)</code>. Não existem valores negativos.</td></tr>
+          <tr><td>Siasg DW</td><td>NULL — o DW não tem conceito de grupo de itens</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-warn">
+      <span class="callout-icon">⚠️</span>
+      <div><strong>ABS(numero_grupo) removido:</strong> devolvia <code>|-4| = 4</code>, ou seja, "Grupo 4" para itens do Grupo 1. Só acertava por coincidência em licitações com um único grupo. O erro passava despercebido porque a distribuição agregada continuava plausível.</div>
     </div>
 
     <div class="callout callout-warn">
@@ -284,6 +322,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

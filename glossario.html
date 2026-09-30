@@ -16,7 +16,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -73,7 +73,7 @@
       </div>
       <div class="glossary-item">
         <div class="glossary-term">Comprasnet</div>
-        <div class="glossary-def">Portal legado de compras públicas (SERPRO). Utilizado para Pregões e RDC. Na CGU: <code>db_compras.comprasnet.*</code> (sem sigilo) e <code>db_compras_sigiloso.comprasnet.*</code> (valores sigilosos reais). 2ª prioridade para licitações, 4ª para itens.</div>
+        <div class="glossary-def">Portal legado de compras públicas (SERPRO). Utilizado para Pregões e RDC. Na CGU: <code>db_compras.comprasnet.*</code> (sem sigilo) e <code>db_compras_sigiloso.comprasnet.*</code> (valores sigilosos reais). 2ª prioridade para licitações, 3ª para itens.</div>
       </div>
       <div class="glossary-item">
         <div class="glossary-term">Concorrência (modal. 3)</div>
@@ -241,7 +241,7 @@
       <div class="gloss-letter">V</div>
       <div class="glossary-item">
         <div class="glossary-term">valor_adjudicado_calculado</div>
-        <div class="glossary-def">Valor total adjudicado do item: quantidade × valor unitário homologado. No FaseExterna, calculado via hierarquia de 4 valores (negociado → lance → melhor valor → proposta inicial). Condições: <code>item.situacao = '1'</code> E <code>proposta.situacao = '6'</code>.</div>
+        <div class="glossary-def">Valor total adjudicado do item: quantidade × valor unitário homologado. No FaseExterna, calculado via hierarquia de 4 valores (negociado → lance → melhor valor → proposta inicial). Nos subitens de grupo, a proposta do vencedor vem antes do melhor valor (v2.0.12). Condições: <code>item.situacao = '1'</code> E <code>proposta.situacao = '6'</code> (nos subitens, a situação herdada da proposta do grupo).</div>
       </div>
       <div class="glossary-item">
         <div class="glossary-term">valor_estimado_calculado</div>
@@ -277,6 +277,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

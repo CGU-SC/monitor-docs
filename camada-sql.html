@@ -16,7 +16,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -164,6 +164,10 @@
       </div>
       <div class="view-body">
         <p>Itens com fornecedor vencedor (via <code>proposta_item</code> e <code>participacao</code>), valores calculados e classificação CATMAT/CATSER via JOIN com Siasg DW.</p>
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <div><strong>Itens agrupados (v2.0.12):</strong> na <code>proposta_item</code>, a linha do subitem (<code>tipo_item = 'S'</code>) guarda só os valores; o julgamento fica na linha da proposta do grupo (<code>tipo_item = 'G'</code>), apontada por <code>id_proposta_grupo</code>. A CTE <code>propostas_adjudicadas</code> usa <code>COALESCE(pg.situacao, p.situacao) = '6'</code>, e o subitem herda o julgamento do grupo. O número real do grupo vem da <code>descricao</code> do cabeçalho (<code>'Grupo N'</code>), na CTE <code>cabecalhos_grupo</code>.</div>
+        </div>
         <div class="code-block">
           <div class="code-header"><span class="code-lang">SQL — Hierarquia de 4 valores adjudicados (v2.0.9)</span></div>
           <pre><code><span class="cm">-- Condição: item ativo (situacao='1') E proposta adjudicada (situacao='6')</span>
@@ -177,6 +181,19 @@
         valor_proposta_calculado                <span class="cm">-- 4º: proposta inicial (Concorrências fechadas)</span>
     )
 <span class="kw">ELSE NULL END AS</span> valor_adjudicado_calculado</code></pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">SQL — Exceção para subitens de grupo (v2.0.12)</span></div>
+          <pre><code><span class="cm">-- Subitem: proposta do vencedor ANTES do melhor valor do item,</span>
+<span class="cm">-- que é o menor valor entre todos os participantes, não o do vencedor</span>
+<span class="kw">CASE</span>
+    <span class="kw">WHEN</span> i.tipo = <span class="str">'S'</span> <span class="kw">THEN</span>
+        <span class="fn">COALESCE</span>(pa.valor_negociado_julgamento_calculado, pa.valor_lance_calculado,
+                 pa.valor_proposta_calculado, i.melhor_valor_proposta_lance_calculado)
+    <span class="kw">ELSE</span>
+        <span class="fn">COALESCE</span>(pa.valor_negociado_julgamento_calculado, pa.valor_lance_calculado,
+                 i.melhor_valor_proposta_lance_calculado, pa.valor_proposta_calculado)
+<span class="kw">END</span></code></pre>
         </div>
       </div>
     </div>
@@ -204,10 +221,11 @@
           <div class="view-name">vw_itens_comprasnet_sc</div>
           <div class="view-file">08_-_vw_itens_comprasnet_sc.sql</div>
         </div>
-        <div class="view-badges"><span class="view-source">Comprasnet</span><span class="source-priority p4">4ª (Itens)</span></div>
+        <div class="view-badges"><span class="view-source">Comprasnet</span><span class="source-priority p4">3ª (Itens)</span></div>
       </div>
       <div class="view-body">
         <p>UNION ALL das bases sigilosa e não-sigilosa. Campos ausentes preenchidos com <code>CAST(NULL AS tipo)</code> para compatibilidade no UNION ALL — <code>NULL</code> sem CAST causa erro de tipo.</p>
+        <p><strong>v2.0.12:</strong> <code>NULLIF(ti.codGrupo, 0) AS numero_grupo</code>. O <code>0</code> é o único sentinela do <code>codGrupo</code> (não existem negativos) e aparecia no painel como "Grupo 0".</p>
       </div>
     </div>
 
@@ -220,7 +238,7 @@
         <div class="view-badges"><span class="view-source blue">CONSOLIDADA</span></div>
       </div>
       <div class="view-body">
-        <p>UNION ALL com anti-joins na hierarquia FaseExterna → Siasg DW → PNCP → Comprasnet. O anti-join é feito a nível de licitação — se ela existe no FaseExterna, todos os itens vêm do FaseExterna.</p>
+        <p>UNION ALL com anti-joins na hierarquia FaseExterna → Siasg DW → Comprasnet (não há view de itens do PNCP). O anti-join é feito a nível de licitação — se ela existe no FaseExterna, todos os itens vêm do FaseExterna.</p>
       </div>
     </div>
   </div>
@@ -283,7 +301,7 @@
 
         <div class="callout callout-info" style="margin-top:16px;">
           <span class="callout-icon">ℹ️</span>
-          <div><strong>Não censurados:</strong> <code>qtd_lances_item</code> e <code>qtd_fornecedores_propostas</code> — não revelam o orçamento sigiloso.<br><strong>ABS() aplicado (v2.0.11):</strong> <code>numero_grupo</code>, <code>quantidade_solicitada</code> e <code>quantidade_minima_solicitada</code> para tratar valores negativos de cadastro.</div>
+          <div><strong>Não censurados:</strong> <code>qtd_lances_item</code> e <code>qtd_fornecedores_propostas</code> — não revelam o orçamento sigiloso.<br><strong>ABS() aplicado (v2.0.11):</strong> <code>quantidade_solicitada</code> e <code>quantidade_minima_solicitada</code> para tratar valores negativos de cadastro.<br><strong>ABS(numero_grupo) removido (v2.0.12):</strong> estava errado. No FaseExterna, o <code>numero_grupo</code> é uma referência ao <code>numero_item</code> do cabeçalho, e os cabeçalhos são numerados em ordem inversa (<code>-N</code> = Grupo 1). A SP agora projeta o <code>numero_grupo</code> já normalizado pelas views de origem.</div>
         </div>
 
         <h3 class="sub-title">Cabeçalhos de grupo filtrados na SP</h3>
@@ -343,6 +361,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

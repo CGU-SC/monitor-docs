@@ -21,7 +21,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -124,7 +124,7 @@
 
     <div class="callout callout-warn">
       <span class="callout-icon">⚠️</span>
-      <div><strong>Itens recriados com novos IDs (mesmo versao=0):</strong> Alterações significativas geram novos IDs com o mesmo <code>numero_item</code>. Sempre usar <code>ORDER BY versao DESC, id DESC</code> — correção aplicada em v2.0.9.</div>
+      <div><strong>Itens com várias linhas (mesmo <code>numero_item</code>):</strong> Cada alteração do item na fase de edital gera uma linha nova, com <code>id</code> novo e <code>versao = 0</code>; a linha definitiva fica numa versão maior. Por isso <code>numero_item</code> não é único na licitação, só por versão. Sempre usar <code>ORDER BY versao DESC, id DESC</code> — correção aplicada em v2.0.9, mecanismo detalhado em v2.0.12 (§14.1.1).</div>
     </div>
 
     <div class="callout callout-info">
@@ -146,7 +146,7 @@
 
   <div class="section">
     <span class="badge badge-tecnico">⚙ Técnico</span>
-    <div class="section-eyebrow">2ª Prior. Licitações · 4ª Prior. Itens</div>
+    <div class="section-eyebrow">2ª Prior. Licitações · 3ª Prior. Itens</div>
     <h2 class="section-title"><em>Comprasnet</em></h2>
     <p class="section-desc">Portal legado. Na CGU, disponível em duas bases separadas por sigilo.</p>
 
@@ -275,6 +275,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

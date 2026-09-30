@@ -23,7 +23,7 @@
 
   <!-- Direita: versão -->
   <div class="header-right">
-    <span class="version-pill">v2.0.11 — Abr/2026</span>
+    <span class="version-pill">v2.0.12 — Set/2026</span>
   </div>
 </header>
 
@@ -53,7 +53,7 @@
     <div class="hero-meta">
       <div class="hero-meta-item">
         <span class="lbl">Versão</span>
-        <span class="val">2.0.11 — Abril/2026</span>
+        <span class="val">2.0.12 — Setembro/2026</span>
       </div>
       <div class="hero-meta-item">
         <span class="lbl">Responsável Técnica</span>
@@ -179,7 +179,7 @@
       <div class="tl-item">
         <div class="tl-date">Março/2026<span class="tl-version">v2.0.8</span></div>
         <div class="tl-title">Correções críticas de qualidade de dados</div>
-        <div class="tl-desc"><code>valor_estimado</code> do FaseExterna sempre unitário (corrigido). Sentinelas <code>codGrupo</code> tratados como NULL. Conflitos de tipo no UNION ALL resolvidos.</div>
+        <div class="tl-desc"><code>valor_estimado</code> do FaseExterna sempre unitário (corrigido). Sentinelas <code>codGrupo</code> tratados como NULL (a correção só chegou de fato à produção na v2.0.12). Conflitos de tipo no UNION ALL resolvidos.</div>
       </div>
       <div class="tl-item major">
         <div class="tl-date">Março/2026<span class="tl-version">v2.0.9</span></div>
@@ -195,6 +195,11 @@
         <div class="tl-date">Abril/2026<span class="tl-version">v2.0.11</span></div>
         <div class="tl-title">Adjudicação por grupo · Filtros temporais · ABS() em quantidades</div>
         <div class="tl-desc">100% dos grupos têm adjudicação somente no cabeçalho (<code>numero_item &lt; 0</code>) — lógica da view reescrita. Filtros temporais revisados: Comprasnet ≥ 2021, Siasg ≥ 2020, FaseExterna sem filtro. <code>ABS()</code> em quantidades negativas na SP.</div>
+      </div>
+      <div class="tl-item major">
+        <div class="tl-date">Jul–Set/2026<span class="tl-version">v2.0.12</span></div>
+        <div class="tl-title">Itens agrupados no FaseExterna · Número real do grupo · Fim do "Grupo 0"</div>
+        <div class="tl-desc">Subitens de grupo herdam o julgamento da proposta do grupo e passam a ter fornecedor vencedor e valores (12.163 subitens em SC estavam sem). Número do grupo lido da <code>descricao</code> do cabeçalho; <code>ABS(numero_grupo)</code> removido. <code>NULLIF(codGrupo, 0)</code> no Comprasnet. Proposta do vencedor antes do melhor valor nos subitens. Homologado e implantado em produção em 30/09/2026.</div>
       </div>
     </div>
 
@@ -287,7 +292,7 @@
 
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 
 </body>

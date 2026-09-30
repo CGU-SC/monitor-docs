@@ -17,7 +17,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -108,9 +108,8 @@
               <div class="pipe-arrow-small-wrap"><div style="display:flex;flex-direction:column;align-items:center;padding:4px 0;"><div style="width:1px;height:12px;background:var(--teal);opacity:.6;"></div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--teal);opacity:.75;"></div></div></div>
               <div class="pipe-view teal">vw_itens_siasg_sc <span class="pipe-priority p3">2ª</span></div>
               <div class="pipe-arrow-small-wrap"><div style="display:flex;flex-direction:column;align-items:center;padding:4px 0;"><div style="width:1px;height:12px;background:var(--teal);opacity:.6;"></div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--teal);opacity:.75;"></div></div></div>
-              <div class="pipe-view" style="font-size:11px;">vw_itens_consolidada_sc <span style="font-size:9px;opacity:.6;">(PNCP via consolidada)</span> <span class="pipe-priority p4">3ª</span></div>
-              <div class="pipe-arrow-small-wrap"><div style="display:flex;flex-direction:column;align-items:center;padding:4px 0;"><div style="width:1px;height:12px;background:var(--teal);opacity:.6;"></div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--teal);opacity:.75;"></div></div></div>
-              <div class="pipe-view">vw_itens_comprasnet_sc <span class="pipe-priority p2">4ª</span></div>
+              <div class="pipe-view">vw_itens_comprasnet_sc <span class="pipe-priority p2">3ª</span></div>
+              <div style="font-size:10px;color:var(--text-muted);font-weight:300;margin-top:6px;">Não há view de itens do PNCP (v2.0.12)</div>
             </div>
           </div>
         </div>
@@ -246,16 +245,7 @@
             <td class="richness-yes">✅ COUNT(F_ITEM_FORNECEDOR)</td>
           </tr>
           <tr>
-            <td><span class="source-priority p4" style="font-size:9px;">3ª</span></td>
-            <td style="color:var(--text-mid);">PNCP</td>
-            <td class="richness-no">❌ Não disponível</td>
-            <td class="richness-part">⚠️ Parcial — compraitemresultado</td>
-            <td class="richness-yes">✅ qtdHomologada × valorUnit.</td>
-            <td class="richness-no">❌</td>
-            <td class="richness-no">❌</td>
-          </tr>
-          <tr>
-            <td><span class="source-priority p2" style="font-size:9px;">4ª</span></td>
+            <td><span class="source-priority p2" style="font-size:9px;">3ª</span></td>
             <td style="color:var(--text-muted);">Comprasnet</td>
             <td class="richness-part">⚠️ Parcial — grupo/classe</td>
             <td class="richness-no">❌ TBL_PROPOSTAITEM indisponível na CGU</td>
@@ -272,6 +262,14 @@
       <div>
         <strong>Por que Siasg DW é 2ª para itens, mas 3ª para licitações?</strong><br>
         Para <em>licitações</em>, o Comprasnet ocupa a 2ª posição por ter dados estruturais mais recentes (situação, datas) que o Siasg, que parou em abril/2024. Para <em>itens</em>, o Siasg DW é superior: tem classificação completa CATMAT/CATSER e dados do fornecedor vencedor — dados que o <code>db_compras</code> da CGU não oferece por não ter a <code>TBL_PROPOSTAITEM</code>.
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <span class="callout-icon">ℹ️</span>
+      <div>
+        <strong>E o PNCP? (correção v2.0.12)</strong><br>
+        O PNCP participa da hierarquia de <em>licitações</em>, mas <strong>não</strong> da de itens: não existe view de itens do PNCP. Versões anteriores desta documentação listavam quatro fontes de itens, o que descrevia uma intenção, não a implementação.
       </div>
     </div>
   </div>
@@ -324,6 +322,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

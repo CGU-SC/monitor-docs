@@ -16,7 +16,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.11 — Abr/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -41,9 +41,9 @@
     <span class="badge badge-tecnico">⚙ Técnico</span>
     <p class="section-desc">Todos os problemas foram descobertos por investigação empírica — não por suposição. Cada item tem diagnóstico quantificado, impacto e decisão documentados.</p>
     <div class="stat-row">
-      <div class="stat-card teal"><span class="stat-label">Correções aplicadas</span><span class="stat-value">8</span></div>
+      <div class="stat-card teal"><span class="stat-label">Correções aplicadas</span><span class="stat-value">11</span></div>
       <div class="stat-card amber"><span class="stat-label">Limitações aceitas</span><span class="stat-value">4</span></div>
-      <div class="stat-card neutral"><span class="stat-label">Última correção</span><span class="stat-value" style="font-size:18px;margin-top:4px;">v2.0.11</span></div>
+      <div class="stat-card neutral"><span class="stat-label">Última correção</span><span class="stat-value" style="font-size:18px;margin-top:4px;">v2.0.12</span></div>
     </div>
   </div>
 
@@ -51,6 +51,81 @@
   <div class="section">
     <div class="section-eyebrow">Correções Aplicadas</div>
     <h2 class="section-title">Problemas <em>Corrigidos</em></h2>
+
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="issue-severity sev-critical">🔴</div>
+        <div>
+          <div class="issue-title">Subitens de grupo sem fornecedor vencedor nem valor homologado</div>
+          <div class="issue-tags">
+            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.12</span>
+            <span class="issue-tag tag-fonte">FaseExterna</span>
+          </div>
+        </div>
+      </div>
+      <div class="issue-body">
+        <p>Na <code>proposta_item</code>, a linha do subitem (<code>tipo_item = 'S'</code>) registra só os valores do fornecedor; o julgamento fica na linha da proposta do grupo (<code>tipo_item = 'G'</code>), apontada por <code>id_proposta_grupo</code>. A CTE <code>propostas_adjudicadas</code> filtrava <code>situacao = '6'</code> na linha do subitem, que nunca tem esse valor. No nível da licitação não havia prejuízo, porque os agregados usam os cabeçalhos; o furo era no nível do item.</p>
+        <div class="stat-pills">
+          <div class="stat-pill"><span class="sp-val red">12.163</span><span class="sp-lbl">Subitens sem fornecedor em SC (100% da classe)</span></div>
+          <div class="stat-pill"><span class="sp-val red">~23%</span><span class="sp-lbl">Dos itens do FaseExterna afetados</span></div>
+          <div class="stat-pill"><span class="sp-val teal">35.234 → 44.524</span><span class="sp-lbl">Itens com fornecedor na consolidada</span></div>
+        </div>
+        <div class="fix-banner">
+          <span>✅</span>
+          <div><strong>Correção:</strong> o subitem herda o julgamento do grupo — <code>LEFT JOIN proposta_item AS pg ON pg.id = p.id_proposta_grupo</code> e <code>COALESCE(pg.situacao, p.situacao) = '6'</code>. Para item isolado, o comportamento é idêntico ao anterior. Implantada em produção em 30/09/2026.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="issue-severity sev-critical">🔴</div>
+        <div>
+          <div class="issue-title">ABS(numero_grupo) exibia o número de grupo errado</div>
+          <div class="issue-tags">
+            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.12</span>
+            <span class="issue-tag tag-fonte">FaseExterna</span>
+          </div>
+        </div>
+      </div>
+      <div class="issue-body">
+        <p>No FaseExterna, o <code>numero_grupo</code> do subitem é uma referência ao <code>numero_item</code> do cabeçalho, e os cabeçalhos são numerados em ordem inversa: <code>-N</code> é o Grupo 1 e <code>-1</code> é o último. O <code>ABS()</code> da SP transformava <code>-4</code> em "Grupo 4" para itens do Grupo 1. Só acertava por coincidência em licitações com um único grupo, e a distribuição agregada continuava plausível, o que escondeu o erro.</p>
+        <div class="stat-pills">
+          <div class="stat-pill"><span class="sp-val">264</span><span class="sp-lbl">Descrições distintas, 100% no padrão 'Grupo N'</span></div>
+          <div class="stat-pill"><span class="sp-val red">13.059</span><span class="sp-lbl">Itens com grupo negativo na consolidada (antes)</span></div>
+          <div class="stat-pill"><span class="sp-val teal">0</span><span class="sp-lbl">Depois da correção</span></div>
+        </div>
+        <div class="fix-banner">
+          <span>✅</span>
+          <div><strong>Correção:</strong> nova CTE <code>cabecalhos_grupo</code> na <code>vw_itens_faseexterna_sc</code> lê o número real da <code>descricao</code> do cabeçalho (<code>TRY_CAST(REPLACE(descricao, 'Grupo ', '') AS INT)</code>). <code>ABS(numero_grupo)</code> removido da SP; os <code>ABS()</code> de quantidades foram mantidos. Implantada em produção em 30/09/2026.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="issue-severity sev-warn">🟡</div>
+        <div>
+          <div class="issue-title">Valor dos subitens de grupo subestimado pelo melhor valor do item</div>
+          <div class="issue-tags">
+            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.12</span>
+            <span class="issue-tag tag-fonte">FaseExterna</span>
+          </div>
+        </div>
+      </div>
+      <div class="issue-body">
+        <p>Quando o subitem não tinha valor negociado nem lance, o cálculo recorria ao <code>melhor_valor_proposta_lance_calculado</code>, que é o menor valor entre todos os participantes, e não o preço do vencedor. Todas as divergências entre a soma dos subitens e o total homologado dos cabeçalhos eram negativas.</p>
+        <div class="stat-pills">
+          <div class="stat-pill"><span class="sp-val">475</span><span class="sp-lbl">Licitações com grupo adjudicado (SC)</span></div>
+          <div class="stat-pill"><span class="sp-val red">R$ 6.136.866,85</span><span class="sp-lbl">Diferença antes (0,83%)</span></div>
+          <div class="stat-pill"><span class="sp-val teal">R$ 2.856,14</span><span class="sp-lbl">Diferença depois (0,0004%)</span></div>
+        </div>
+        <div class="fix-banner">
+          <span>✅</span>
+          <div><strong>Correção:</strong> só nos subitens (<code>i.tipo = 'S'</code>), a hierarquia passa a ser negociado → lance → <strong>proposta do vencedor</strong> → melhor valor. No Pregão 90024/2026 (UASG 153163), os quatro grupos passaram a fechar centavo a centavo com o total homologado. Implantada em produção em 30/09/2026.</div>
+        </div>
+      </div>
+    </div>
 
     <div class="issue-card">
       <div class="issue-header">
@@ -142,18 +217,23 @@
       <div class="issue-header">
         <div class="issue-severity sev-warn">🟡</div>
         <div>
-          <div class="issue-title">codGrupo com valores sentinela (0, -1, -2, -3) tratados como grupo válido</div>
+          <div class="issue-title">codGrupo = 0 exibido no painel como "Grupo 0"</div>
           <div class="issue-tags">
-            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.8</span>
+            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.12</span>
             <span class="issue-tag tag-fonte">Comprasnet</span>
           </div>
         </div>
       </div>
       <div class="issue-body">
-        <p>Valores sentinela do campo <code>codGrupo</code> eram exibidos no painel como números de grupo válidos.</p>
+        <p>O sentinela <code>0</code> do campo <code>codGrupo</code> (sem grupo) era exibido no painel como número de grupo válido. A v2.0.8 registrava esse problema como corrigido, mas <strong>a correção nunca chegou à produção</strong>, e a documentação citava sentinelas negativos (<code>-1, -2, -3</code>) que não existem.</p>
+        <div class="stat-pills">
+          <div class="stat-pill"><span class="sp-val">0</span><span class="sp-lbl">Valores negativos em tb_compras_mat e tb_compras_serv</span></div>
+          <div class="stat-pill"><span class="sp-val red">73.186</span><span class="sp-lbl">Itens no "Grupo 0" na view (30/09/2026)</span></div>
+          <div class="stat-pill"><span class="sp-val red">391</span><span class="sp-lbl">Itens no "Grupo 0" na consolidada</span></div>
+        </div>
         <div class="fix-banner">
           <span>✅</span>
-          <div><strong>Correção:</strong> <code>CASE WHEN codGrupo &gt; 0 THEN codGrupo ELSE NULL END</code></div>
+          <div><strong>Correção:</strong> <code>NULLIF(ti.codGrupo, 0) AS numero_grupo</code>, harmonizado com o NULL das demais fontes. Implantada em produção em 30/09/2026.</div>
         </div>
       </div>
     </div>
@@ -207,34 +287,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- LIMITAÇÕES -->
-
-    <div class="issue-card">
-      <div class="issue-header">
-        <div class="issue-severity sev-critical">🔴</div>
-        <div>
-          <div class="issue-title">Adjudicação por grupo no FaseExterna — lógica incorreta nos subitens</div>
-          <div class="issue-tags">
-            <span class="issue-tag tag-fixed">✓ Corrigido v2.0.11</span>
-            <span class="issue-tag tag-fonte">FaseExterna</span>
-          </div>
-        </div>
-      </div>
-      <div class="issue-body">
-        <p>Nas versões anteriores, o cálculo de <code>valor_adjudicado_total</code> tentava capturar adjudicação tanto nos subitens quanto nos cabeçalhos de grupo. Investigação empírica em 14/04/2026 revelou que <strong>100% dos grupos adjudicados</strong> têm a proposta adjudicada registrada exclusivamente no cabeçalho (<code>numero_item &lt; 0</code>), nunca nos subitens individuais.</p>
-        <div class="stat-pills">
-          <div class="stat-pill"><span class="sp-val">116.094</span><span class="sp-lbl">Grupos verificados</span></div>
-          <div class="stat-pill"><span class="sp-val teal">100%</span><span class="sp-lbl">Com adjudicação apenas no cabeçalho</span></div>
-          <div class="stat-pill"><span class="sp-val">0</span><span class="sp-lbl">Grupos com adjudicação nos subitens</span></div>
-        </div>
-        <div class="fix-banner">
-          <span>✅</span>
-          <div><strong>Correção:</strong> <code>valores_agregados</code> reescrita com lógica condicional: valor estimado = apenas subitens (<code>numero_item &gt; 0</code>); valor adjudicado = cabeçalhos de grupo (<code>numero_item &lt; 0</code>) + itens avulsos sem grupo. Cabeçalhos já trazem o valor total do grupo — não multiplicar por quantidade.</div>
-        </div>
-      </div>
-    </div>
 
     <div class="issue-card">
       <div class="issue-header">
@@ -264,7 +316,9 @@
         </div>
       </div>
     </div>
+  </div>
 
+  <!-- LIMITAÇÕES -->
   <div class="section">
     <div class="section-eyebrow">Limitações Conhecidas</div>
     <h2 class="section-title">Problemas <em>Aceitos</em></h2>
@@ -343,6 +397,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.11</span> · Abril/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
 </footer>
 </body></html>

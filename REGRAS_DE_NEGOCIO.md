@@ -1,8 +1,8 @@
 # Regras de Negócio - Monitor de Compras SC
 
 ## Documento de Especificação Técnica
-**Versão:** 2.0.11  
-**Data:** Abril/2026  
+**Versão:** 2.0.12 (implantada em produção em 30/09/2026)  
+**Data:** Setembro/2026  
 **Projeto:** Monitor de Compras - CGU/SC
 
 ---
@@ -51,7 +51,9 @@ O Siasg DW parou de ser atualizado em abril/2024. Por esse motivo:
 
 A hierarquia de prioridade para **itens** é diferente da hierarquia para **licitações**, porque a riqueza dos dados varia conforme a fonte. O Siasg DW é prioridade 2ª para itens (em vez do Comprasnet) por ter classificação completa e dados do fornecedor vencedor.
 
-Ordem: **FaseExterna → Siasg DW → PNCP → Comprasnet**
+Ordem: **FaseExterna → Siasg DW → Comprasnet**
+
+> **Nota (v2.0.12):** o PNCP **não** participa da hierarquia de itens, apesar de participar da de licitações. Não existe view de itens do PNCP. O comentário da Parte 3 da `vw_itens_consolidada_sc` registra isso: *"PRIORIDADE 4 — PNCP seria 3 mas não tem view de itens ainda"*. Versões anteriores deste documento listavam quatro fontes, o que descrevia uma intenção, não a implementação.
 
 > **→ Ver detalhes completos no §19 — Regras de Negócio de Itens** (hierarquia, anti-joins, campos disponíveis por fonte, classificação, lances, performance).
 
@@ -258,6 +260,8 @@ END
 
 > **Por que `valor_proposta_calculado` é o último?** Ele é o valor **inicial** da proposta, antes de lances e negociação. Num Pregão, os 3 primeiros campos sempre têm valor, então nunca chega no 4º. Numa Concorrência com modo "Fechado", não há lances nem negociação — os 3 primeiros são NULL e o `valor_proposta_calculado` é o único disponível.
 
+> **Exceção para subitens de grupo (v2.0.12, Setembro/2026):** nos subitens (`item.tipo = 'S'`), a proposta do próprio vencedor vem **antes** do melhor valor do item: negociado → lance → **proposta do vencedor** → melhor valor. Motivo: em disputas por grupo, muitos subitens não têm lance nem negociação próprios, e o `melhor_valor_proposta_lance_calculado` do item é o **menor valor entre todos os participantes**, e não o do vencedor. Ver §17.2.10.
+
 #### Hierarquia de Quantidades:
 1. `item.qtde_adjudicada` (prioridade)
 2. `proposta.quantidade_ofertada`
@@ -295,11 +299,23 @@ END
 > |---|---|---|
 > | 116.094 | **116.094** | **0** |
 
+**Mecanismo por trás do achado (descoberto em Julho/2026, v2.0.12):**
+
+O padrão de 100% não é anomalia do FaseExterna: é o **desenho da tabela `proposta_item`**, que guarda dois tipos de linha para licitações com grupos, ligadas pelo campo `id_proposta_grupo`:
+
+| `tipo_item` | O que a linha registra | `situacao` |
+|---|---|---|
+| `'S'` — subitem de grupo | Apenas os **valores** do fornecedor naquele subitem (proposta, lance, quantidade) | Sempre NULL |
+| `'G'` — proposta do grupo | O **julgamento** da proposta do fornecedor para o grupo inteiro. Seu `id_item` aponta para o cabeçalho | Preenchida |
+| `'I'` — item não agrupado | Valores **e** julgamento na mesma linha | Preenchida |
+
+> **→ Ver §17.2.9 para a dissecação completa e a regra de herança.**
+
 **Regra implementada na `vw_licitacoes_faseexterna_sc`:**
 
 | Tipo de item | Valor estimado | Valor adjudicado |
 |---|---|---|
-| **Subitem de grupo** (`numero_item > 0`, `numero_grupo < 0`) | ✅ Usar (unitário × qtd) | ❌ Nunca tem adjudicação própria |
+| **Subitem de grupo** (`numero_item > 0`, `numero_grupo < 0` na **tabela crua**) | ✅ Usar (unitário × qtd) | ❌ Não tem adjudicação na própria linha — está na proposta do grupo (`tipo_item='G'`) |
 | **Cabeçalho de grupo** (`numero_item < 0`) | ❌ Não usar (dupla contagem) | ✅ Usar (valor já é TOTAL do grupo) |
 | **Item avulso** (`numero_item > 0`, `numero_grupo IS NULL`) | ✅ Usar (unitário × qtd) | ✅ Usar (unitário × qtd) |
 
@@ -713,7 +729,7 @@ A tabela `eaud_integracao` indica se o alerta gerou tarefa no e-CGU (e-Aud).
 | `vw_itens_faseexterna_sc` | Itens do FaseExterna | db_compras.ComprasGov_FaseExterna |
 | `vw_itens_siasg_sc` | **Itens do Siasg DW (segunda fonte de itens)** | db_dwsiasg |
 | `vw_itens_comprasnet_sc` | Itens do Comprasnet | db_compras.comprasnet e db_compras_sigiloso.comprasnet |
-| `vw_itens_consolidada_sc` | **View principal de itens** (4 fontes) | FaseExterna → Siasg → PNCP → Comprasnet |
+| `vw_itens_consolidada_sc` | **View principal de itens** (3 fontes) | FaseExterna → Siasg → Comprasnet (não há view de itens do PNCP — §2.1.1) |
 | `sp_itens_licitacoes_pbi` | **Stored Procedure para Power BI** - itens com censura de sigilo | vw_itens_consolidada_sc + vw_licitacoes_consolidada_sc +  db_cnpj.dbo.CNPJ (dados de fornecedores)|
 | `vw_alertas_alice_sc` | Alertas do Alice | db_alice_consulta |
 | `vw_alice_eaud_integracao_sc` | Integração Alice/e-CGU | db_alice_consulta |
@@ -829,6 +845,40 @@ ROW_NUMBER() OVER (
 
 **Aplicado em:** `vw_itens_faseexterna_sc` (CTEs `compras_recentes` e `itens_recentes`) e `vw_licitacoes_faseexterna_sc` (mesmas CTEs).
 
+##### Refinamento do mecanismo (v2.0.12)
+
+> **Verificação de Julho/2026.** A descrição acima ("recria itens quando a licitação passa por alterações significativas") descreve o sintoma, mas o mecanismo é mais geral e mais banal: **cada alteração do item na fase de edital gera uma linha nova, com `id` novo, e a carga da CGU copia todas.** Não é preciso mudança de lei nem reclassificação.
+
+**Exemplo verificado** — UASG 393027, modalidade 5, compra 90057/2025, item 1, com **13 linhas**:
+
+| `versao` | Linhas | Características |
+|---|---|---|
+| 0 | 12 | `fase = 'AS'`, `homologado = 'N'`, `versao_sala_disputa = 0`. Cada linha é uma fotografia do item na fase de edital, com `data_hora_alteracao` e `dataCargaCgu` próprias. O `valor_estimado` é reeditado ao longo do planejamento: 63,5 mi → 86,8 mi → 85,6 mi → 83,6 mi → 84,2 mi (4×) → 80,5 mi (2×) → 65,7 mi |
+| 30 | 1 | `fase = 'AE'`, `homologado = 'S'`, `versao_sala_disputa = 24`, com homologador identificado, `melhor_valor_proposta_lance_calculado = 48,6 mi`. **Esta é a linha definitiva.** Só ela tem `id_melhor_proposta_nao_desclassificada` e `id_fase_recursal_atual` preenchidos |
+
+Distribuição por versão na mesma compra (7 itens): `versao = 0` tem **84 linhas para 7 números de item** (12 fotografias × 7 itens), mais 7 linhas nas versões finais (13, 13, 13, 13, 15, 22, 30) — uma por item. Total: 91 = 7 × 13.
+
+**Consequências para as regras:**
+
+1. **`numero_item` NÃO é único dentro da licitação.** É único **por versão**. Qualquer consulta ad hoc contra a tabela `item` sem deduplicar vai inflar contagens. Isso já causou distorção em análise diagnóstica: uma verificação de padrão de grupos apontou 14.068 divergências sem deduplicar, e apenas 1.197 depois de deduplicar.
+2. **`ORDER BY versao DESC, id DESC` está correto**, mas pelo motivo certo: `versao DESC` pega a versão definitiva; o `id DESC` é o desempate necessário para os itens que **nunca saíram da `versao = 0`**, onde o `id` maior é a fotografia mais recente.
+3. **Não existe filtro `versao = 0`** em nenhuma view, e não deve existir: isso descartaria justamente as linhas definitivas.
+
+**Padrão para consultas ad hoc** contra a tabela `item`:
+
+```sql
+WITH itens_dedup AS (
+    SELECT i.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY i.numero_uasg, i.codigo_modalidade, i.numero_compra,
+                         i.ano_compra, i.numero_grupo, i.numero_item
+            ORDER BY i.versao DESC, i.id DESC
+        ) AS rn
+    FROM db_compras.ComprasGov_FaseExterna.item AS i
+)
+SELECT * FROM itens_dedup WHERE rn = 1;
+```
+
 ### 14.2 Datas de Publicação (Primeira e Última)
 
 O projeto utiliza duas datas de publicação:
@@ -930,7 +980,7 @@ ROW_NUMBER() OVER (
 
 **Decisão:** Aceitar como limitação de dados das fontes (~2%). Não há correção aplicável no SQL — o dado simplesmente não existe. O campo `fonte_dados = 'FASEEXTERNA'` no painel permite identificar esses casos para investigação manual quando necessário.
 
-**Possível melhoria futura:** Implementar anti-join a nível de **item** (não de licitação) na consolidada de itens, permitindo que itens do Comprasnet complementem licitações do FaseExterna que não têm itens. Porém, como os itens do Comprasnet frequentemente também não têm valores, o ganho seria limitado.
+**Possível melhoria futura:** Implementar anti-join no nível do **item** (não da licitação) na consolidada de itens, permitindo que itens do Comprasnet complementem licitações do FaseExterna que não têm itens. Porém, como os itens do Comprasnet frequentemente também não têm valores, o ganho seria limitado.
 
 ---
 
@@ -1414,28 +1464,89 @@ LEFT JOIN D_ITCP_MATERIAL_SERVICO AS mat_serv
 --     ON d_item.ID_ITCP_MATERIAL_SERVICO = mat_serv.ID_ITCP_MATERIAL_SERVICO
 ```
 
-#### 17.2.4 Número do Grupo (`numero_grupo`)
+#### 17.2.4 Número do Grupo (`numero_grupo`) — reescrito em v2.0.12
 
 O campo `numero_grupo` identifica o grupo ao qual o item pertence em licitações com itens agrupados.
 
+> ⚠️ **Correção v2.0.12:** as duas linhas da tabela abaixo estavam erradas nas versões anteriores. O FaseExterna **não** é "direto da tabela", e o Comprasnet **não** tem sentinelas negativos.
+
 | Fonte | Campo | Observação |
 |-------|-------|------------|
-| FaseExterna | `item.numero_grupo` | Direto da tabela — confiável |
-| Comprasnet | `TB_COMPRAS_MAT.codGrupo` / `TB_COMPRAS_SERV.codGrupo` | Valores ≤ 0 são sentinelas (sem grupo) |
+| FaseExterna | `item.numero_grupo` | ⚠️ **NÃO é o número do grupo.** É uma referência ao `numero_item` do cabeçalho (ambos negativos). Ver abaixo. |
+| Comprasnet | `TB_COMPRAS_MAT.codGrupo` / `TB_COMPRAS_SERV.codGrupo` | `0` = sem grupo (único sentinela existente). Positivos são o número real do grupo. |
 | Siasg DW | `NULL` | O DW não tem conceito de grupo de itens |
-| PNCP | `NULL` | Não disponível |
+| PNCP | `NULL` | Não há view de itens do PNCP |
 
-**Correção v2.0.8 — Comprasnet:** Valores sentinela do `codGrupo` (0, -1, -2, -3) eram exibidos como números de grupo válidos. Corrigido para tratar ≤ 0 como NULL:
+##### FaseExterna: o `numero_grupo` é uma referência, não um número
+
+Os cabeçalhos de grupo são numerados em **ordem inversa** dentro da compra: `-N` corresponde ao **Grupo 1** e `-1` ao **último** grupo. O `numero_grupo` do subitem aponta para o `numero_item` do cabeçalho.
+
+**Exemplo verificado** — UASG 153163, modalidade 5, compra 90024/2026:
+
+| `numero_item` do cabeçalho | `descricao` | Subitens apontam com `numero_grupo` = |
+|---|---|---|
+| -4 | Grupo 1 | -4 |
+| -3 | Grupo 2 | -3 |
+| -2 | Grupo 3 | -2 |
+| -1 | Grupo 4 | -1 |
+
+**O número real do grupo está na `descricao` do cabeçalho**, no padrão `'Grupo N'`. Verificação de Julho/2026: 264 descrições distintas (`'Grupo 1'` a `'Grupo 264'`), **100% no padrão**, nenhuma fora dele, todas com `tipo = 'G'`. A descrição do cabeçalho é gerada pelo sistema, não é texto livre do pregoeiro (a preocupação com editabilidade foi levantada e afastada empiricamente).
+
+**Por que o `ABS()` estava errado:** ele devolve `|-4| = 4`, ou seja, "Grupo 4" para itens do Grupo 1. Só acerta por coincidência em licitações com **um único grupo** (`-1` → Grupo 1). O erro passou despercebido porque a **distribuição agregada continua plausível**: o rótulo "1" (= último grupo de cada licitação) aparece em toda licitação com grupos, o "2" só nas com dois ou mais, e assim por diante, produzindo uma curva decrescente de aparência normal. O que se perde é a atribuição individual do item ao grupo.
+
+**Validação empírica (Julho/2026)**, comparando as regras candidatas contra a descrição do cabeçalho, com deduplicação de versões:
+
+| Resultado | Quantidade |
+|---|---|
+| Bate com ordem crescente | 124.658 |
+| Ambíguo (grupo único, bate nas duas) | 56.301 |
+| **Não bate com nenhuma** | 1.197 |
+| **Bate com ABS (regra antiga)** | 110 |
+
+A regra posicional (ordem crescente) erra em 1.197 casos, provavelmente grupos excluídos no planejamento que deixaram buraco na sequência. A leitura pela descrição não erra, por construção.
+
+**Correção v2.0.12 — FaseExterna** (`vw_itens_faseexterna_sc`, CTE `cabecalhos_grupo`):
 
 ```sql
--- ANTES (v2.7): trazia sentinelas como grupo válido
-ti.codGrupo AS numero_grupo
+-- ANTES: numero_grupo cru (negativo), "normalizado" com ABS() na SP → número ERRADO
+i.numero_grupo
 
--- AGORA (v2.8): sentinelas viram NULL
-CASE WHEN ti.codGrupo > 0 THEN ti.codGrupo ELSE NULL END AS numero_grupo
+-- AGORA: número real, via JOIN com o cabeçalho
+cabecalhos_grupo AS (
+    SELECT
+        g.numero_uasg, g.codigo_modalidade, g.numero_compra, g.ano_compra,
+        g.numero_item AS numero_item_cabecalho,
+        TRY_CAST(REPLACE(g.descricao, 'Grupo ', '') AS INT) AS numero_grupo_real
+    FROM itens_recentes AS g
+    WHERE g.rn = 1 AND g.numero_item < 0
+)
+-- ...
+LEFT JOIN cabecalhos_grupo AS cg
+    ON  cg.numero_uasg = i.numero_uasg
+    AND cg.codigo_modalidade = i.codigo_modalidade
+    AND cg.numero_compra = i.numero_compra
+    AND cg.ano_compra = i.ano_compra
+    AND cg.numero_item_cabecalho = i.numero_grupo
 ```
 
-> **Nota:** O campo `tipo_item` (I=Item, S=Subitem de grupo) também depende de `codGrupo > 0` e já estava correto.
+##### Comprasnet: o sentinela é `0`, e a correção v2.0.8 nunca chegou à produção
+
+> ⚠️ **Achado de Julho/2026:** a versão 2.0.8 deste documento registrava que os sentinelas `(0, -1, -2, -3)` haviam sido corrigidos para NULL. **Duas afirmações estavam erradas:**
+> 1. **Não existem sentinelas negativos.** Medição: `MIN(codGrupo) = 0` e zero negativos em `tb_compras_mat` (8.416.774 linhas) e `tb_compras_serv` (1.416.883 linhas).
+> 2. **A correção nunca foi aplicada.** A `vw_itens_comprasnet_sc` em produção tinha `ti.codGrupo AS numero_grupo` cru, e o painel exibia um "Grupo 0" com 382 itens (127 em 2022, 255 em 2023). O `ABS()` da SP não o mascarava, porque `ABS(0) = 0`.
+> 3. **Situação em 30/09/2026:** a correção continuava fora de produção. A `vw_itens_comprasnet_sc` devolvia **73.186** itens com `numero_grupo = 0`; na consolidada de itens, que só usa o Comprasnet para licitações ausentes do FaseExterna e do Siasg DW, eram **391**. Na versão homologada, **0** nos dois casos (§17.7).
+
+**Correção v2.0.12 — Comprasnet** (`vw_itens_comprasnet_sc`):
+
+```sql
+-- ANTES: sentinela 0 exibido como "Grupo 0" no painel
+ti.codGrupo AS numero_grupo
+
+-- AGORA: harmonizado com o NULL das demais fontes
+NULLIF(ti.codGrupo, 0) AS numero_grupo
+```
+
+> **Nota:** O campo `tipo_item` (I=Item, S=Subitem de grupo) já dependia de `codGrupo > 0` e sempre esteve correto. Ou seja, a semântica de "0 = sem grupo" já estava assumida na própria view, apenas não aplicada ao `numero_grupo`.
 
 #### 17.2.5 Prazo entre Publicação e Abertura (`prazo_dias`)
 
@@ -1511,8 +1622,10 @@ No FaseExterna, itens com `numero_item` negativo são **cabeçalhos de grupo** (
 
 **Tratamento na SP (tabela de itens no Power BI):**
 - `WHERE i.numero_item > 0 OR i.numero_item IS NULL` — exclui cabeçalhos (só mostra subitens)
-- `ABS(i.numero_grupo) AS 'Nº Grupo'` — normaliza negativos para positivos
-- `ABS(i.quantidade_solicitada)` — trata quantidades negativas (erro de cadastro)
+- ~~`ABS(i.numero_grupo) AS 'Nº Grupo'` — normaliza negativos para positivos~~ ⚠️ **REMOVIDO em v2.0.12: estava errado.** O `numero_grupo` do FaseExterna é referência ao `numero_item` do cabeçalho, e os cabeçalhos são numerados em ordem inversa. Ver §17.2.4. A SP agora projeta `i.numero_grupo` direto, já normalizado pelas views de origem.
+- `ABS(i.quantidade_solicitada)` — trata quantidades negativas (erro de cadastro). **Mantido**: é regra distinta, sobre quantidade, não sobre grupo.
+
+> ⚠️ **Pendente de verificação (v2.0.12):** o exemplo acima rotula o cabeçalho `-8` como "Cabeçalho do Grupo 8". Pela regra descoberta em §17.2.4, se o Pregão 90014/2025 tiver 8 grupos, o cabeçalho `-8` é o **Grupo 1**, não o 8. Conferir a `descricao` desse cabeçalho e corrigir o exemplo.
 
 **Tratamento na `vw_licitacoes_faseexterna_sc` (v2.0.11):**
 A CTE `valores_agregados` traz **todos os itens** (positivos e negativos) e usa lógica condicional:
@@ -1521,6 +1634,162 @@ A CTE `valores_agregados` traz **todos os itens** (positivos e negativos) e usa 
 - **Contagens:** apenas subitens (`numero_item > 0`)
 
 > Ver §5.2.1 para a regra completa e a verificação empírica que a justificou.
+
+#### 17.2.9 Desenho da `proposta_item` e Herança do Julgamento em Grupos (v2.0.12)
+
+> **Investigação de Julho/2026.** Ponto de partida: por que existem propostas com `situacao IS NULL`? Hipótese inicial (descartada): seriam fornecedores que manifestaram interesse mas não ofertaram. Os dados mostram o contrário — quase todas têm valor de proposta preenchido.
+
+##### As três formas de linha em `proposta_item`
+
+A tabela guarda linhas de naturezas diferentes, identificadas por `tipo_item` e ligadas por `id_proposta_grupo`:
+
+| `tipo_item` | Papel | `id_proposta_grupo` | `situacao` |
+|---|---|---|---|
+| `'I'` | Item não agrupado: **valores e julgamento** na mesma linha | NULL | Preenchida quando julgada |
+| `'G'` | Proposta do fornecedor **para o grupo inteiro**: guarda o **julgamento**. Seu `id_item` aponta para o **cabeçalho** | NULL | Preenchida quando julgada |
+| `'S'` | Subitem de grupo: guarda **apenas os valores** do fornecedor naquele subitem | Aponta para a linha `'G'` | Praticamente sempre NULL |
+
+**Isto explica o achado de §5.2.1** (100% das adjudicações de grupo no cabeçalho): não é anomalia, é o desenho da tabela. A linha `'G'` que carrega o `situacao = '6'` tem `id_item` = id do cabeçalho.
+
+##### Dissecação dos `situacao IS NULL` (base nacional, Julho/2026)
+
+Total de `proposta_item` com `situacao IS NULL`: **49.351.232**.
+
+| `tipo_item` | Nulos | % da classe | Causa |
+|---|---|---|---|
+| `'I'` | 33.369.699 | 77,8% | Proposta nunca alcançada no julgamento |
+| `'S'` | 14.523.884 | 99,99% | **Nulo por desenho** — julgamento vive na linha `'G'` |
+| `'G'` | 1.457.649 | 76,7% | Proposta nunca alcançada no julgamento |
+
+> **Conclusão:** `situacao IS NULL` **não** significa ausência de proposta. Significa proposta que nunca foi objeto de julgamento, por dois motivos estruturalmente distintos. E, ao contrário do que se poderia supor, os subitens são a **minoria** (29,4%): a maior parte são itens não agrupados.
+>
+> [Inferência] As proporções de `'I'` (77,8%) e `'G'` (76,7%) são quase idênticas, o que sugere o mesmo mecanismo: são as unidades julgáveis, e o pregoeiro só analisa as propostas na ordem de classificação até achar uma aceitável. As demais nunca chegam a ser julgadas.
+
+**Consistência dos dados:** `'S'` e "tem grupo pai" são equivalentes — todo `'S'` tem `id_proposta_grupo` preenchido, e nenhum `'I'` ou `'G'` tem. Não há órfãos.
+
+##### A exceção: 1.402 subitens com situação própria
+
+Existem **1.402** linhas `'S'` com `situacao` preenchida, todas com `'1'` (desclassificada na análise). Em **100% delas o pai também está com `'1'`**. A combinação perigosa (subitem `'1'` sob grupo `'6'`) **não existe na base**.
+
+> [Inferência] Coerente com o motivo observado em campo ("existiam itens do grupo sem proposta"): a desclassificação na análise parece ser aplicada ao grupo e propagada aos subitens.
+
+##### Defeito corrigido: subitens de grupo sem fornecedor vencedor
+
+**Diagnóstico (SC, Julho/2026):**
+
+| Classe | Com fornecedor | Sem fornecedor |
+|---|---|---|
+| Item isolado | 31.534 (79%) | 8.348 |
+| **Subitem de grupo** | **0** | **12.163 (100%)** |
+
+**Causa:** a CTE `propostas_adjudicadas` da `vw_itens_faseexterna_sc` filtrava `p.situacao = '6'` na linha do subitem, que nunca tem esse valor. A informação existia apenas na linha do cabeçalho — que a SP descarta (`WHERE i.numero_item > 0`). Resultado: cerca de **23% dos itens do FaseExterna** ficavam sem fornecedor vencedor e sem valor unitário homologado no painel, não por falta de dado na fonte, mas porque a linha que o continha era filtrada fora. No nível da **licitação** não havia prejuízo, porque a `vw_licitacoes_faseexterna_sc` usa os cabeçalhos para os agregados (§5.2.1); o furo era no nível do **item**.
+
+**Correção v2.0.12** (`vw_itens_faseexterna_sc`, CTE `propostas_adjudicadas`):
+
+```sql
+-- ANTES: nunca retorna nada para subitem de grupo
+FROM db_compras.ComprasGov_FaseExterna.proposta_item AS p
+INNER JOIN ... participacao AS part ON p.id_participacao = part.id
+WHERE p.situacao = '6'
+
+-- AGORA: subitem herda o julgamento da proposta do grupo
+FROM db_compras.ComprasGov_FaseExterna.proposta_item AS p
+LEFT JOIN db_compras.ComprasGov_FaseExterna.proposta_item AS pg
+    ON pg.id = p.id_proposta_grupo
+INNER JOIN ... participacao AS part ON p.id_participacao = part.id
+WHERE COALESCE(pg.situacao, p.situacao) = '6'
+```
+
+**Por que o `COALESCE` nessa ordem é seguro:**
+- **Item isolado:** `id_proposta_grupo` é NULL → `pg.situacao` é NULL → cai na própria linha. Comportamento **idêntico ao anterior**.
+- **Subitem:** prevalece a situação do grupo, que é onde o julgamento existe.
+- **As 1.402 exceções:** o pai está com `'1'`, que prevalece e não é `'6'` — ficam corretamente fora, mesmo resultado que se obteria olhando a própria linha.
+
+**Nota sobre os valores:** os subitens têm valores próprios (proposta, lance, quantidade), então **não é preciso ratear** o valor do grupo. Exemplo verificado (UASG 153163, compra 90024/2026, item 10): a licitante adjudicada tem lance unitário próprio de R$ 300,00 na linha `'S'`, enquanto o julgamento está na linha `'G'`.
+
+#### 17.2.10 Valores do Vencedor em Subitens de Grupo (v2.0.12, Setembro/2026)
+
+> **Investigação de 30/09/2026, durante a homologação da v2.0.12.** Com a herança do julgamento (§17.2.9), os subitens de grupo passaram a ter fornecedor vencedor e valores. Para confirmar que esses valores são os **finais** (e não os da proposta inicial), comparou-se, em cada licitação, a soma do valor adjudicado dos subitens com o total homologado dos cabeçalhos de grupo.
+
+##### Como o valor do subitem é formado
+
+Mesmo quando a disputa é por grupo, a proposta do fornecedor é detalhada item a item: cada linha `'S'` da `proposta_item` guarda o preço daquele fornecedor para aquele subitem. O valor exibido no subitem vem dessa linha; o valor do grupo **não é rateado**.
+
+##### Primeira verificação (hierarquia original)
+
+| Indicador | Resultado |
+|---|---|
+| Licitações com grupo adjudicado (FaseExterna, SC) | 475 |
+| Soma dos subitens a até 1% do total dos cabeçalhos | 412 (86,7%) |
+| Licitações com subitens sem valor | 0 |
+| Soma dos cabeçalhos | R$ 742.080.508,59 |
+| Soma dos subitens | R$ 735.943.641,74 |
+| Diferença | R$ 6.136.866,85 (0,83%) |
+
+**Todas as divergências eram negativas** (subitens abaixo do cabeçalho), o que indicava uma causa sistemática, e não ruído de cadastro ou arredondamento. As 30 maiores divergências tinham, todas, subitens sem lance nem negociação.
+
+##### Causa
+
+Na hierarquia original (§5.2), quando o subitem não tem valor negociado nem lance, o cálculo recorre ao `item.melhor_valor_proposta_lance_calculado`. Esse campo é o **menor valor entre todos os participantes** do item, e não o preço do vencedor. Daí o viés sempre negativo.
+
+**Prova no Pregão 90024/2026 (UASG 153163):**
+
+| Grupo | Cabeçalho (total homologado) | Soma dos subitens (hierarquia original) | Subitens sem lance nem negociação | Soma usando a proposta do vencedor |
+|---|---|---|---|---|
+| 1 | 246.559,00 | 222.546,75 | 1 | **246.559,00** |
+| 2 | 315.198,03 | 277.135,07 | 6 | **315.198,03** |
+| 3 | 240.913,65 | 240.913,65 | 0 | **240.913,65** |
+| 4 | 266.465,64 | 203.306,39 | 1 | **266.465,64** |
+
+Usando a proposta do vencedor nos subitens sem lance nem negociação, os quatro grupos fecham **centavo a centavo** com o total homologado. O Grupo 3, sem nenhum caso, já fechava antes.
+
+##### Regra implementada
+
+Nos cálculos de `valor_unitario_homologado` e `valor_adjudicado_calculado` da `vw_itens_faseexterna_sc`:
+
+| Tipo de item | Hierarquia do valor unitário |
+|---|---|
+| Subitem de grupo (`i.tipo = 'S'`) | negociado → lance → **proposta do vencedor** → melhor valor do item |
+| Demais itens | negociado → lance → melhor valor do item → proposta (inalterada, §5.2) |
+
+```sql
+CASE
+    WHEN i.tipo = 'S' THEN
+        COALESCE(pa.valor_negociado_julgamento_calculado, pa.valor_lance_calculado,
+                 pa.valor_proposta_calculado, i.melhor_valor_proposta_lance_calculado)
+    ELSE
+        COALESCE(pa.valor_negociado_julgamento_calculado, pa.valor_lance_calculado,
+                 i.melhor_valor_proposta_lance_calculado, pa.valor_proposta_calculado)
+END
+```
+
+**Resultado:** a diferença total entre subitens e cabeçalhos caiu de R$ 6.136.866,85 para **R$ 2.856,14 (0,0004%)**. No Pregão 90024/2026, mudaram exatamente os 8 subitens que recorriam ao melhor valor (por exemplo: item 48, de R$ 250,00 para R$ 376,60; item 57, de R$ 250,00 para R$ 356,76; item 110, de R$ 0,65 para R$ 1,00).
+
+> **Por que a mudança ficou restrita aos subitens:** foi onde o problema foi medido e confirmado. [Inferência] A mesma inversão talvez faça sentido para itens não agrupados, mas isso alteraria valores já validados e não foi testado. Ver pendências (§19.3).
+
+##### Consulta de consistência (reutilizável)
+
+```sql
+WITH por_licitacao AS (
+    SELECT
+        Cod_licitacao,
+        SUM(CASE WHEN numero_item < 0 THEN valor_unitario_homologado END) AS total_cabecalhos,
+        SUM(CASE WHEN tipo_item = 'S' THEN valor_adjudicado_calculado END) AS total_subitens
+    FROM temp_CGUSC.compras.vw_itens_faseexterna_sc
+    GROUP BY Cod_licitacao
+    HAVING SUM(CASE WHEN numero_item < 0 THEN valor_unitario_homologado END) > 0
+)
+SELECT
+    COUNT(*) AS licitacoes_com_grupo_adjudicado,
+    SUM(CASE WHEN ABS(total_subitens - total_cabecalhos) <= 0.01 * total_cabecalhos
+             THEN 1 ELSE 0 END)                             AS batem_ate_1pct,
+    SUM(CASE WHEN total_subitens IS NULL THEN 1 ELSE 0 END) AS subitens_sem_valor,
+    SUM(total_cabecalhos)                                   AS soma_cabecalhos,
+    SUM(total_subitens)                                     AS soma_subitens
+FROM por_licitacao;
+```
+
+> **Atenção ao somar valores adjudicados diretamente na view de itens:** a `vw_itens_faseexterna_sc` contém os cabeçalhos (total do grupo) **e** os subitens (valores individuais). Somar a view inteira conta cada grupo duas vezes. A SP descarta os cabeçalhos (`numero_item > 0`), por isso a tabela `ItensConsol` do Power BI não tem dupla contagem.
 
 ### 17.3 Fornecedor Vencedor e Valores Adjudicados por Fonte
 
@@ -1531,6 +1800,8 @@ O fornecedor vencedor é identificado pela proposta com `situacao = '6'` (Propos
 Campos trazidos: `cnpj_fornecedor`, `nome_fornecedor`, `porte_fornecedor`, `tipo_fornecedor`, `marca_fabricante`, `modelo_versao`, `quantidade_ofertada`, `valor_unitario_homologado`, `valor_proposta_calculado`, `valor_lance_calculado`, `valor_negociado_julgamento_calculado`.
 
 **`valor_unitario_homologado` (v2.0.8, corrigido v2.0.9):** Calculado como `COALESCE(valor_negociado_julgamento_calculado, valor_lance_calculado, melhor_valor_proposta_lance_calculado, valor_proposta_calculado)` — o preço unitário final do fornecedor vencedor, seguindo a mesma hierarquia de valores do §5.2. Só é preenchido quando `item.situacao = '1'` (ativo) e existe proposta adjudicada (`proposta_item.situacao = '6'`). O campo `item.homologado` **não é mais usado** como condição (ver §5.1).
+
+**Exceção para subitens de grupo (v2.0.12, Setembro/2026):** nos subitens (`tipo = 'S'`), a hierarquia usa a proposta do vencedor **antes** do melhor valor do item. Ver §17.2.10.
 
 O valor adjudicado calculado segue a fórmula documentada no §5.2 (sempre `quantidade × valor_unitário`).
 
@@ -1836,6 +2107,127 @@ No Power Query (modo Importação), usar como fonte SQL:
 EXEC temp_CGUSC.compras.sp_itens_licitacoes_pbi
 ```
 
+### 17.7 Homologação e Implantação da v2.0.12 (Setembro/2026)
+
+#### 17.7.1 Situação encontrada
+
+As correções da v2.0.12 foram documentadas em julho/2026, mas **não tinham sido implantadas em produção**. Isso foi constatado em 30/09/2026 por três evidências independentes:
+
+| Evidência | Resultado em produção |
+|---|---|
+| Data da última alteração das views de itens | `vw_itens_faseexterna_sc`: 27/03/2026; `vw_itens_comprasnet_sc`: 27/02/2026 (anteriores às correções) |
+| "Grupo 0" na `vw_itens_comprasnet_sc` | 73.186 itens |
+| Pregão 90024/2026 (UASG 153163) | subitens com `numero_grupo` negativo (-4 a -1) e nenhum com fornecedor ou valor homologado |
+
+**Nomes dos objetos de itens em produção:** `compras.vw_itens_faseexterna_sc`, `compras.vw_itens_comprasnet_sc`, `compras.vw_itens_consolidada_sc` e `compras.sp_itens_licitacoes_pbi`.
+
+> **Lição:** a base de qualquer alteração deve ser o código **exportado de produção** (SSMS: botão direito no objeto → Gerar Script como → ALTER para → Arquivo), e não cópias salvas em outros lugares, que podem estar defasadas. O arquivo exportado também serve de backup para a reversão.
+
+**Consulta para verificar se uma correção está em produção** (procura trechos característicos no código dos objetos, ignorando espaços e quebras de linha):
+
+```sql
+USE temp_CGUSC;
+
+WITH verificacoes AS (
+    SELECT * FROM (VALUES
+        ('vw_itens_faseexterna_sc', 'Subitem herda o julgamento do grupo',        '%COALESCE(pg.situacao,p.situacao)%', 1),
+        ('vw_itens_faseexterna_sc', 'CTE cabecalhos_grupo (número real do grupo)', '%cabecalhos_grupo%',                 1),
+        ('vw_itens_faseexterna_sc', 'Hierarquia de valores dos subitens',          '%WHENi.tipo=''S''%',                 1),
+        ('vw_itens_comprasnet_sc',  'NULLIF no codGrupo (fim do Grupo 0)',        '%NULLIF(ti.codGrupo,0)%',            1),
+        ('sp_itens_licitacoes_pbi', 'ABS(numero_grupo) removido da SP',           '%ABS(i.numero_grupo)%',              0)
+    ) AS v (objeto, verificacao, padrao, deve_existir)
+)
+SELECT
+    v.objeto, v.verificacao, o.modify_date AS ultima_alteracao,
+    CASE
+        WHEN o.object_id IS NULL THEN 'OBJETO NÃO ENCONTRADO'
+        WHEN d.def IS NULL THEN 'SEM PERMISSÃO PARA LER O CÓDIGO'
+        WHEN v.deve_existir = 1 AND d.def LIKE v.padrao THEN 'OK'
+        WHEN v.deve_existir = 0 AND d.def NOT LIKE v.padrao THEN 'OK'
+        ELSE 'PENDENTE'
+    END AS status
+FROM verificacoes AS v
+LEFT JOIN sys.objects AS o
+    ON o.name = v.objeto AND SCHEMA_NAME(o.schema_id) = 'compras'
+OUTER APPLY (
+    SELECT REPLACE(REPLACE(REPLACE(REPLACE(
+               OBJECT_DEFINITION(o.object_id), ' ', ''), CHAR(9), ''), CHAR(13), ''), CHAR(10), '') AS def
+) AS d
+ORDER BY v.objeto;
+```
+
+#### 17.7.2 Procedimento de homologação (reutilizável)
+
+1. **Exportar** o código de produção de todos os objetos afetados (base das alterações e backup).
+2. **Criar cópias `_hml`** das views alteradas, da consolidada (apontando para as `_hml`) e da SP (apontando para a consolidada `_hml`), com `CREATE OR ALTER`. Produção não é tocada.
+3. **Testar** produção × homologação no banco (§17.7.3).
+4. **Validar no Power BI** numa cópia do .pbix, trocando apenas a consulta de itens por `EXEC temp_CGUSC.compras.sp_itens_licitacoes_pbi_hml`. A consulta de licitações não muda.
+5. **Implantar** com `CREATE OR ALTER` nos objetos de produção, com o script de reversão pronto.
+6. **Verificar** com a consulta do §17.7.1 e **remover** os objetos `_hml`.
+
+> **Dica sobre mensagens de erro do SSMS:** em "Procedimento X, Linha 118 [Linha de Início do Lote 9]", o "Lote 9" é a **linha do arquivo** em que o lote começa, e não o número do lote. Somando as duas (9 + 118 = 127), obtém-se a linha exata do erro no arquivo. Ao executar vários scripts em sequência, o SSMS não para no primeiro erro; a última mensagem pode esconder a primeira.
+
+#### 17.7.3 Testes e resultados (30/09/2026)
+
+| Teste | Esperado | Resultado |
+|---|---|---|
+| Estrutura das colunas da consolidada (`sys.dm_exec_describe_first_result_set`) | nenhuma diferença de nome, ordem ou tipo | nenhuma diferença |
+| "Grupo 0" no Comprasnet | 0 | 0 |
+| Pregão 90024/2026 | itens 1 a 28 no Grupo 1, 29 a 58 no 2, 59 a 88 no 3, 89 a 110 no 4; fornecedor nos subitens | conforme |
+| Linhas por fonte, produção × homologação | iguais (sem duplicação) | iguais |
+| Valor estimado por fonte | igual | igual |
+| Consistência subitens × cabeçalhos | diferença mínima | R$ 2.856,14 (0,0004%) |
+| Tempo da consolidada de itens | sem piora | produção 34,3 s; homologação 26,6 s |
+| Cópia do .pbix com a SP `_hml` | telas corretas | aprovado |
+
+**Comparação por fonte (consolidada de itens):**
+
+| Indicador | Produção | Homologação |
+|---|---|---|
+| Linhas: Comprasnet / FaseExterna / Siasg DW | 578 / 53.212 / 59.474 | 578 / 53.212 / 59.474 |
+| FaseExterna: itens com fornecedor | 35.234 | 44.524 |
+| FaseExterna: itens com grupo negativo | 13.059 | 0 |
+| FaseExterna: valor adjudicado na view (inclui cabeçalhos) | R$ 2.709.643.339,78 | R$ 3.460.493.035,17 |
+| Comprasnet: itens no "Grupo 0" | 391 | 0 |
+| Siasg DW | sem alteração | sem alteração |
+
+> O aumento do valor adjudicado na view reflete os subitens que passaram a ter valor; como a view também contém os cabeçalhos, essa soma conta os grupos duas vezes (§17.2.10). No painel isso não ocorre, porque a SP descarta os cabeçalhos.
+>
+> [Inferência] Sobre o tempo: a versão de homologação rodou em segundo lugar, com parte dos dados em cache; a leitura segura é que o custo das duas versões é equivalente.
+
+#### 17.7.4 Impacto no painel
+
+| Tabela / visual | Efeito |
+|---|---|
+| `LicitacoesConsol` | Nenhum (a v2.0.12 não altera as views de licitações) |
+| `ItensConsol`, subitens de grupo | Passam a ter fornecedor, Qtd Ofertada, Valor Unitário Homologado e Valor Total Homologado |
+| `ItensConsol`, Nº Grupo | Passa a mostrar o número real do grupo (antes, invertido em licitações com mais de um grupo) |
+| `ItensConsol`, Comprasnet | O "Grupo 0" deixa de aparecer (itens sem grupo ficam com Nº Grupo vazio) |
+| Totais de valores homologados em visuais de itens | Aumentam, porque antes faltavam os itens de grupo |
+
+**Recomendação:** nas tabelas de detalhe de itens, desativar o total das colunas de **valor unitário** (Valor Estimado Unitário, Valor Unitário Homologado): somar preços unitários de itens diferentes não tem significado.
+
+[Inferência] A **Qtd Adjudicada** dos subitens deve continuar vazia, porque vem do próprio item no FaseExterna, que a correção não altera.
+
+#### 17.7.5 Scripts de implantação
+
+| Script | Função |
+|---|---|
+| Um script por objeto (`CREATE OR ALTER`) | Altera `vw_itens_faseexterna_sc`, `vw_itens_comprasnet_sc` e `sp_itens_licitacoes_pbi`. A `vw_itens_consolidada_sc` não muda, porque já lê as views de fonte pelo nome |
+| Verificação pós-implantação | Consulta do §17.7.1 sobre os três objetos (esperado: OK em todas as linhas) e contagem do "Grupo 0" (esperado: 0) |
+| Reversão | Código dos três objetos exportado de produção em 30/09/2026, antes da implantação |
+| Remoção dos objetos de homologação | `DROP` das views e da SP com sufixo `_hml`, depois da implantação validada |
+
+> ⚠️ **O script de reversão não faz parte da sequência de implantação.** Ele só deve ser executado se for preciso desfazer a implantação. Na primeira tentativa, em 30/09/2026, a implantação e a reversão foram executadas em seguida, e a produção voltou ao código antigo: a verificação mostrou `PENDENTE` nas cinco linhas, com os três objetos alterados no mesmo instante (17:27:32). Um `PENDENTE` geral logo depois da implantação indica exatamente isso.
+
+#### 17.7.6 Registro da implantação
+
+| Item | Registro |
+|---|---|
+| Data | 30/09/2026 |
+| Última alteração dos objetos | `vw_itens_faseexterna_sc`: 17:30:39.953; `vw_itens_comprasnet_sc`: 17:30:39.980; `sp_itens_licitacoes_pbi`: 17:30:40.057 |
+| Verificação pós-implantação | OK nas cinco verificações de código |
+
 ---
 
 ## 18. Contatos
@@ -1893,7 +2285,7 @@ EXEC temp_CGUSC.compras.sp_itens_licitacoes_pbi
 | Fevereiro/2026 | 2.0.5 | Documentação: hierarquia de classificação material/serviço (codconjmat ↔ ID_ITCP_MATERIAL_SERVICO) |
 | Fevereiro/2026 | 2.0.5 | Documentação: correspondência de códigos Comprasnet ↔ Siasg DW (mesma origem SIASG mainframe) |
 | Fevereiro/2026 | 2.0.5 | Documentação: problema de performance e solução com tabela temporária como barreira de otimização |
-| Fevereiro/2026 | 2.0.5 | Documentação: regras de censura de sigilo a nível de item (10 campos zerados) |
+| Fevereiro/2026 | 2.0.5 | Documentação: regras de censura de sigilo no nível do item (10 campos zerados) |
 | Fevereiro/2026 | **2.0.6** | **Reorganização: criação do §19 — Regras de Negócio de Itens** (centraliza todas as regras de itens) |
 | Fevereiro/2026 | 2.0.6 | Movidos para §19: hierarquia de prioridade de itens (ex-§2.1.1), classificação material/serviço (ex-§15A), performance (ex-§15B), fornecedor vencedor (ex-§5.4) |
 | Fevereiro/2026 | 2.0.6 | Novo §19.2: campos `qtd_lances_item` e `qtd_fornecedores_propostas` — decisões técnicas e disponibilidade por fonte |
@@ -1940,3 +2332,85 @@ EXEC temp_CGUSC.compras.sp_itens_licitacoes_pbi
 | Abril/2026 | 2.0.11 | Correção em `vw_licitacoes_faseexterna_sc`: `valores_agregados` agora traz todos os itens (positivos e negativos); estimado = subitens, adjudicado = cabeçalhos + avulsos |
 | Abril/2026 | 2.0.11 | **Revisão filtros temporais**: FaseExterna sem filtro, Comprasnet `>= 2021` (era 2022), Siasg `>= 2020` (era 2022). Consulta PBI filtra por `data_primeira_publicacao >= 2022` (§10.2) |
 | Abril/2026 | 2.0.11 | Melhoria: `ABS()` em quantidades na SP — quantidades negativas (erro de cadastro) agora positivas |
+
+### 19.3 Versão 2.0.12: Itens Agrupados no FaseExterna (Julho/2026; homologação e implantação em 30/09/2026)
+
+| Data | Versão | Alteração |
+|---|---|---|
+| Julho/2026 | **2.0.12** | **Correção crítica: subitens de grupo não tinham fornecedor vencedor nem valor unitário homologado.** Em `proposta_item`, a linha do subitem (`tipo_item='S'`) registra só valores; o julgamento fica na linha da proposta do grupo (`tipo_item='G'`), apontada por `id_proposta_grupo`. A CTE `propostas_adjudicadas` da `vw_itens_faseexterna_sc` agora usa `COALESCE(pg.situacao, p.situacao) = '6'` (§17.2.9). Diagnóstico em SC: 12.163 subitens (100% da classe, ~23% dos itens do FaseExterna) sem fornecedor |
+| Julho/2026 | **2.0.12** | **Correção crítica: `ABS(numero_grupo)` exibia o número de grupo ERRADO.** O `numero_grupo` do FaseExterna é referência ao `numero_item` do cabeçalho, e os cabeçalhos são numerados em ordem inversa (`-N` = Grupo 1). Nova CTE `cabecalhos_grupo` lê o número real da `descricao` do cabeçalho. `ABS()` removido da SP (projeção e `ORDER BY`); os `ABS()` de quantidades foram mantidos (§17.2.4, §17.2.8) |
+| Julho/2026 | 2.0.12 | Correção: `NULLIF(ti.codGrupo, 0)` na `vw_itens_comprasnet_sc` — o "Grupo 0" fantasma (382 itens: 127 em 2022, 255 em 2023) chegava ao painel. A correção anunciada em v2.0.8 **nunca foi aplicada em produção** (§17.2.4) |
+| Julho/2026 | 2.0.12 | Correção de documentação: não existem sentinelas negativos no `codGrupo` do Comprasnet. Medição: `MIN = 0`, zero negativos em `tb_compras_mat` (8.416.774 linhas) e `tb_compras_serv` (1.416.883). A v2.0.8 citava `(0, -1, -2, -3)` (§17.2.4) |
+| Julho/2026 | 2.0.12 | Correção de documentação: hierarquia de itens é de **3 fontes** (FaseExterna → Siasg DW → Comprasnet). Não há view de itens do PNCP (§2.1.1) |
+| Julho/2026 | 2.0.12 | Documentação: dissecação dos 49.351.232 `proposta_item` com `situacao IS NULL` — 67,6% `'I'`, 29,4% `'S'` (nulo por desenho), 3,0% `'G'`. `situacao IS NULL` significa proposta não julgada, não ausência de proposta (§17.2.9) |
+| Julho/2026 | 2.0.12 | Documentação: refinamento do mecanismo de versionamento — cada alteração do item na fase de edital gera linha nova; `numero_item` **não é único** na licitação, só por versão. Padrão de deduplicação para consultas ad hoc (§14.1.1) |
+| Julho/2026 | 2.0.12 | Documentação: a `descricao` dos cabeçalhos de grupo é gerada pelo sistema, não é texto livre — 264 valores distintos, 100% no padrão `'Grupo N'`, todos com `tipo = 'G'` (§17.2.4) |
+| Setembro/2026 | 2.0.12 | **Constatação: a v2.0.12 não estava em produção.** Views de itens com última alteração em fev/mar de 2026; 73.186 itens no "Grupo 0"; subitens do Pregão 90024/2026 com grupo negativo e sem fornecedor (§17.7.1) |
+| Setembro/2026 | **2.0.12** | **Correção: valores do vencedor em subitens de grupo.** Hierarquia negociado → lance → proposta do vencedor → melhor valor, só para subitens. O melhor valor do item é o menor entre todos os participantes e subestimava os subitens sem lance. Diferença entre subitens e cabeçalhos: de R$ 6.136.866,85 para R$ 2.856,14 (§17.2.10) |
+| Setembro/2026 | 2.0.12 | Homologação com objetos `_hml`: estrutura, volume, valores, consistência e tempo aprovados; validação numa cópia do painel (§17.7.3) |
+| Setembro/2026 | 2.0.12 | Documentação: procedimento de homologação e implantação, consulta de verificação do código em produção, nomes reais dos objetos e impacto no painel (§17.7) |
+| Setembro/2026 | 2.0.12 | Correção de documentação: a lista da §17.2.8 recuperou o item "Contagens" e a remissão ao §5.2.1, deslocados na edição de julho |
+| Setembro/2026 | 2.0.12 | Performance da consulta de licitações: pendência resolvida. A `db_pncp.dbo.compra` (3.835.936 linhas) tinha só o índice clustered em `id`, e o `OUTER APPLY` correlacionado de `Consulta_LicitacoesSC_PBI` varria a tabela por licitação (degradação observada: 28 min). Criado o índice `ix_compra_unidade_numero_ano` em `(unidadeorgaoid, numerocompra, anocompra) INCLUDE (sequencialcompra)`, que cobre as colunas da correlação |
+| 30/09/2026 | **2.0.12** | **Implantação em produção** de `vw_itens_faseexterna_sc`, `vw_itens_comprasnet_sc` e `sp_itens_licitacoes_pbi`, com verificação OK nas cinco checagens de código (§17.7.6) |
+
+#### Pendências abertas em 2.0.12
+
+Resumo em tabela; o contexto e a forma de verificar cada item estão no detalhamento logo abaixo.
+
+| Item | Descrição |
+|---|---|
+| Exemplo §17.2.8 | O cabeçalho `-8` do Pregão 90014/2025 provavelmente é o **Grupo 1**, não o 8. Conferir a `descricao` e corrigir |
+| Campo `tipo` da tabela `item` | Existe campo explícito (`'I'`/`'G'`/`'S'`) para identificar cabeçalho. Verificado: todo `numero_item < 0` tem `tipo = 'G'`, e não há `tipo = 'G'` com `numero_item >= 0`. Os critérios são equivalentes; avaliar migrar do proxy do sinal para o campo explícito |
+| Colisão de links PNCP | A correlação do `OUTER APPLY` em `Consulta_LicitacoesSC_PBI` usa UASG + número + ano, sem modalidade. Pela **§16.1**, isso é correto do lado do PNCP: sob a Lei 14.133/2021 a numeração é sequencial única por CNPJ+ano, independente de modalidade. O resíduo está do **lado do ComprasGov**, cuja chave é UASG + modalidade + número + ano: duas contratações de mesma UASG, ano e número, mas modalidades diferentes, casariam com o mesmo registro do PNCP. Medir com `HAVING COUNT(DISTINCT Modalidade) > 1` sobre a consolidada |
+| Concluir a implantação | Implantada em 30/09/2026. Faltam: registrar a contagem do "Grupo 0" em produção e remover os objetos `_hml` (§17.7.5, §17.7.6) |
+| Hierarquia de valores em itens não agrupados | Avaliar se a proposta do vencedor também deve vir antes do melhor valor para itens `'I'` (§17.2.10). Não testado |
+| Coluna `item_adjudicado_gerado` (agosto/2026) | Com os subitens de grupo passando a ter fornecedor e valor, reavaliar se a coluna ainda é necessária |
+| Totais no painel | Desativar o total das colunas de valor unitário nas tabelas de detalhe de itens (§17.7.4) |
+
+#### Detalhamento das pendências abertas (situação em 30/09/2026)
+
+Esta subseção guarda o contexto de cada pendência, para que possam ser retomadas sem depender de memória: o que motivou, o que já se sabe, o que falta saber e como verificar.
+
+##### P1. Hierarquia de valores em itens não agrupados (`'I'`)
+
+- **Origem:** a correção dos subitens de grupo (§17.2.10) colocou a proposta do vencedor antes do melhor valor do item, porque o `item.melhor_valor_proposta_lance_calculado` é o **menor valor entre todos os participantes**, e não o preço do vencedor. Nos subitens, isso subestimava o valor homologado (diferença de R$ 6.136.866,85, sempre negativa).
+- **O que já se sabe:** o erro só ocorre quando a proposta vencedora não tem valor negociado nem lance, porque só então o cálculo recorre ao melhor valor. O §5.2 registra que, num Pregão, esses campos sempre têm valor. Nos itens `'I'`, a hierarquia continua a original (negociado → lance → melhor valor → proposta).
+- **O que falta saber:** não foi feita nenhuma medição nos itens `'I'`. Não se sabe quantos itens adjudicados caem no melhor valor nem se, nesses casos, ele difere da proposta do vencedor.
+- **Por que o teste dos subitens não serve:** nos subitens havia uma referência independente, o total homologado gravado no cabeçalho do grupo. Item não agrupado não tem cabeçalho, então não existe total para comparar.
+- **Como verificar:** consulta somente de leitura sobre a `vw_itens_faseexterna_sc`, restrita a itens `'I'` com proposta adjudicada, que meça: (1) quantos não têm valor negociado nem lance, mas têm melhor valor; (2) em quantos desses o melhor valor é diferente da proposta do vencedor; (3) a soma dessa diferença em reais, por modalidade.
+- **Critério de decisão:** se a quantidade ou o valor forem desprezíveis, encerrar sem alteração. Se houver diferença relevante, examinar alguns casos antes de estender a regra dos subitens aos itens `'I'`, porque a mudança altera valores hoje exibidos no painel.
+
+##### P2. Exemplo do §17.2.8 (Pregão 90014/2025, UASG 158517)
+
+- **Origem:** o exemplo foi escrito antes da descoberta de que os cabeçalhos de grupo são numerados em ordem inversa (§17.2.4) e rotula o cabeçalho `-8` como "Grupo 8".
+- **O que falta saber:** o número real do grupo. Se a licitação tiver 8 grupos, o `-8` é o **Grupo 1**.
+- **Como verificar:** ler a `descricao` do cabeçalho `numero_item = -8` dessa compra na tabela `item` do FaseExterna (padrão `'Grupo N'`) e corrigir a tabela do exemplo.
+
+##### P3. Campo `tipo` da tabela `item` no lugar do sinal do `numero_item`
+
+- **Origem:** as views e a SP identificam cabeçalho de grupo por `numero_item < 0`. A tabela `item` tem um campo explícito, `tipo` (`'I'`, `'G'`, `'S'`).
+- **O que já se sabe:** verificado em julho/2026 que todo `numero_item < 0` tem `tipo = 'G'` e que não há `tipo = 'G'` com `numero_item >= 0`. Hoje os dois critérios são equivalentes.
+- **O que falta:** uma decisão, não uma verificação. O campo explícito é mais legível e não depende de uma convenção de numeração; em troca, é mais uma alteração em objetos que acabaram de ser implantados.
+- **Como verificar antes de migrar:** repetir a checagem de equivalência com os dados atuais.
+
+##### P4. Colisão de links do PNCP
+
+- **Origem:** o `OUTER APPLY` da `Consulta_LicitacoesSC_PBI` localiza a compra no PNCP por UASG + número + ano, sem modalidade (detalhes na tabela de pendências e no §16.1).
+- **Risco:** duas licitações do ComprasGov com mesma UASG, número e ano, mas modalidades diferentes, receberiam o mesmo link do PNCP.
+- **O que falta saber:** se esse caso existe na base. Não foi medido.
+- **Como verificar:** na `vw_licitacoes_consolidada_sc`, agrupar por UASG, `numero_compra` e `ano_compra` com `HAVING COUNT(DISTINCT Modalidade) > 1`. Se houver casos, verificar quais recebem link e se o link aponta para a contratação certa.
+
+##### P5. Coluna `item_adjudicado_gerado`
+
+- **Origem (agosto/2026):** no painel, subitens de grupos adjudicados apareciam como não adjudicados, porque a adjudicação do grupo fica só no cabeçalho, que a SP descarta. Foi proposta uma coluna derivada (S/N) na `vw_itens_faseexterna_sc`, com herança do grupo. O teste filtrado numa única licitação levou mais de 7 minutos, e a coluna não foi concluída.
+- **O que já se sabe:** a coluna não existe no código de produção exportado em 30/09/2026. Com a v2.0.12, os subitens de grupos adjudicados passam a ter fornecedor vencedor e valores.
+- **O que falta:** [Inferência] com a v2.0.12 implantada, a presença de fornecedor vencedor no item provavelmente atende à mesma necessidade. Confirmar no painel, depois da implantação, se filtrar por fornecedor ou por valor homologado resolve o caso original; se resolver, encerrar a pendência sem criar a coluna.
+
+##### P6. Totais de valor unitário no painel
+
+- **Ação no Power BI:** desativar o total das colunas Valor Estimado Unitário e Valor Unitário Homologado nas tabelas de detalhe de itens. Somar preços unitários de itens diferentes não tem significado, e o aumento dos valores com a v2.0.12 torna esse total ainda mais enganoso (§17.7.4).
+
+##### P7. Concluir a implantação da v2.0.12
+
+- **Situação:** implantada em produção em 30/09/2026, com OK nas cinco verificações de código (§17.7.6).
+- **Falta:** (1) registrar o resultado da contagem de itens no "Grupo 0" da `vw_itens_comprasnet_sc` em produção (esperado: 0; antes da implantação: 73.186); (2) remover os objetos `_hml` com o script de remoção, caso ainda existam; (3) descartar a cópia do painel que aponta para a SP `_hml`, que deixa de funcionar depois da remoção.
