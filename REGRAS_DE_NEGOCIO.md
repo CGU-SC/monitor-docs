@@ -2,7 +2,7 @@
 
 ## Documento de Especificação Técnica
 **Versão:** 2.0.12 (implantada em produção em 30/09/2026)  
-**Data:** Setembro/2026  
+**Data:** Outubro/2026  
 **Projeto:** Monitor de Compras - CGU/SC
 
 ---
@@ -1371,7 +1371,7 @@ A hierarquia de prioridade para **itens** é diferente da hierarquia para **lici
 | 1ª | **FaseExterna** | ✅ Completa (via `codigo_item_catalogo` → DW) | ✅ Sim (`proposta_item` + `participacao`) | ✅ Sim | ❌ Não disponível | ✅ `COUNT(proposta_item)` |
 | 2ª | **Siasg DW** | ✅ Completa (`D_ITCP_MATERIAL_SERVICO`) | ✅ Sim (`F_ITEM_FORNECEDOR` + `D_FRND_FORNECEDOR` + dimensões) | ✅ Sim (`VL_PRECO_TOTAL_HOMOLOG` e `VL_PRECO_UNIT_HOMOLOG`) | ✅ `QT_ITCP_LANCES_ITEM` | ✅ `COUNT(F_ITEM_FORNECEDOR)` |
 | 3ª | **PNCP** | ❌ Não disponível | ✅ Parcial (`compraitemresultado`) | ✅ Sim | ❌ | ❌ |
-| 4ª | **Comprasnet** | ⚠️ Parcial (grupo + classe, sem material individual para serviços) | ❌ Não (`TBL_PROPOSTAITEM` indisponível na CGU) | ❌ Não | ❌ (futuro: `TBL_LANCES`) | ❌ (futuro: `TBL_PROPOSTAITEM`) |
+| 4ª | **Comprasnet** | ⚠️ Parcial: materiais com grupo, classe e PDM (não o item individual); serviços com o código individual (`codserv`), ainda não exposto na view (§17.4.6) | ❌ Não (`TBL_PROPOSTAITEM` indisponível na CGU) | ❌ Não | ❌ (futuro: `TBL_LANCES`) | ❌ (futuro: `TBL_PROPOSTAITEM`) |
 
 **Justificativa da diferença em relação às licitações:**
 - Para **licitações**, o Comprasnet é prioridade 2ª porque tem dados estruturais (situação, modalidade, datas) mais atualizados que o Siasg DW.
@@ -1616,16 +1616,16 @@ No FaseExterna, itens com `numero_item` negativo são **cabeçalhos de grupo** (
 **Exemplo:** Pregão 90014/2025, UASG 158517
 | numero_item | numero_grupo | valor_estimado | qtd | Tipo |
 |---|---|---|---|---|
-| -8 | NULL | 765.100,00 | NULL | Cabeçalho do Grupo 8 |
-| 1 | -8 | 6,55 | 100.000 | Subitem do Grupo 8 |
-| 2 | -8 | 22,02 | 5.000 | Subitem do Grupo 8 |
+| -8 | NULL | 765.100,00 | NULL | Cabeçalho do Grupo 1 |
+| 1 | -8 | 6,55 | 100.000 | Subitem do Grupo 1 |
+| 2 | -8 | 22,02 | 5.000 | Subitem do Grupo 1 |
+
+> **Verificado em 05/10/2026:** a compra tem 8 grupos, com 2 subitens cada. A `descricao` do cabeçalho `-8` é `'Grupo 1'` (subitens 1 e 2), e a do `-1` é `'Grupo 8'` (subitens 15 e 16), confirmando a numeração inversa do §17.2.4. A coluna `numero_grupo` acima mostra o valor cru da tabela `item` (`-8`); na `vw_itens_faseexterna_sc`, esses subitens saem com `numero_grupo = 1`. Versões anteriores deste documento rotulavam o exemplo como "Grupo 8".
 
 **Tratamento na SP (tabela de itens no Power BI):**
 - `WHERE i.numero_item > 0 OR i.numero_item IS NULL` — exclui cabeçalhos (só mostra subitens)
 - ~~`ABS(i.numero_grupo) AS 'Nº Grupo'` — normaliza negativos para positivos~~ ⚠️ **REMOVIDO em v2.0.12: estava errado.** O `numero_grupo` do FaseExterna é referência ao `numero_item` do cabeçalho, e os cabeçalhos são numerados em ordem inversa. Ver §17.2.4. A SP agora projeta `i.numero_grupo` direto, já normalizado pelas views de origem.
 - `ABS(i.quantidade_solicitada)` — trata quantidades negativas (erro de cadastro). **Mantido**: é regra distinta, sobre quantidade, não sobre grupo.
-
-> ⚠️ **Pendente de verificação (v2.0.12):** o exemplo acima rotula o cabeçalho `-8` como "Cabeçalho do Grupo 8". Pela regra descoberta em §17.2.4, se o Pregão 90014/2025 tiver 8 grupos, o cabeçalho `-8` é o **Grupo 1**, não o 8. Conferir a `descricao` desse cabeçalho e corrigir o exemplo.
 
 **Tratamento na `vw_licitacoes_faseexterna_sc` (v2.0.11):**
 A CTE `valores_agregados` traz **todos os itens** (positivos e negativos) e usa lógica condicional:
@@ -1943,27 +1943,31 @@ Tipo Material/Serviço → Grupo Material (ou Serviço) → Classe → Material/
 | Grupo Material | `TB_GRUPO_MATERIAL` | `codgrpmat` | `codgrpmat` |
 | Grupo Serviço | `TB_GRUPO_SERVICO` | `codgrpserv` | `codgrpserv` (em TB_COMPRAS_SERV) |
 | Classe Material | `TB_CLASSE_MATERIAL` | `codclassemat` | `codclassemat` |
-| Material (item) | `TB_MATERIAL` / `TB_LINHA` | `codconjmat` | `codconjmat` |
+| Material (PDM, conjunto de material) | `TB_MATERIAL` | `codconjmat` | `codconjmat` |
 | Serviço (item) | `TB_SERVICO` | `codserv` | `codserv` (em TB_COMPRAS_SERV) |
 
 **Correspondência entre Comprasnet e Siasg DW:**
 - `codgrpmat` ↔ `ID_ITCP_GRUPO_MATERIAL` — Códigos compatíveis (mesma origem: SIASG mainframe)
 - `codgrpserv` ↔ `ID_ITCP_GRUPO_SERVICO` — Códigos compatíveis
 - `codclassemat` ↔ `ID_ITCP_CLASSE_MAT_SERV` — Códigos compatíveis
-- `codconjmat` ↔ `ID_ITCP_MATERIAL_SERVICO` — Códigos compatíveis (ambos representam o item individual)
+- `codconjmat` ↔ `ID_ITCP_PADRAO_DESC_MAT` (PDM), e **não** `ID_ITCP_MATERIAL_SERVICO`. Quando o código existe na tabela de PDM do Siasg DW, a descrição é idêntica em 98,2% dos itens; quando comparado ao catálogo de itens, 90,1% dos códigos não existem e os demais apontam para objetos sem relação (§17.4.6)
+- `codserv` ↔ `ID_ITCP_MATERIAL_SERVICO` (com `ID_ITCP_GRUPO_SERVICO > 0`): compatíveis em 99,7% dos itens de serviço de SC (§17.4.6)
 
-> **Nota:** Tanto o Comprasnet quanto o Siasg DW são alimentados pelo SIASG mainframe via carga diária, por isso os códigos são intercambiáveis.
+> **Nota:** Tanto o Comprasnet quanto o Siasg DW são alimentados pelo SIASG mainframe via carga diária. Os códigos de grupo, de classe e de serviço são intercambiáveis entre as duas bases; o `codconjmat`, não, porque identifica o PDM, e não o item (§17.4.6).
 
 #### 17.4.4 Disponibilidade de Classificação por Fonte de Itens
 
 | Campo | FaseExterna | Siasg DW | Comprasnet | PNCP |
 |-------|-------------|----------|------------|------|
-| `ID_ITCP_MATERIAL_SERVICO` | ✅ (via `codigo_item_catalogo`) | ✅ (via `f_item.ID_ITCP_TP_COD_MAT_SERV`) | ⚠️ Material: `codconjmat`; Serviço: não disponível | ❌ |
-| `DS_ITCP_MATERIAL_SERVICO` | ✅ | ✅ | ⚠️ Via `TB_MATERIAL.nomconjmat` | ❌ |
+| `ID_ITCP_MATERIAL_SERVICO` | ✅ (via `codigo_item_catalogo`) | ✅ (via `f_item.ID_ITCP_TP_COD_MAT_SERV`) | ⚠️ Material: não disponível (`codconjmat` é PDM); Serviço: `codserv`, ainda não exposto na view | ❌ |
+| `DS_ITCP_MATERIAL_SERVICO` | ✅ | ✅ | ⚠️ Material: nome do PDM (`TB_MATERIAL.nomconjmat`); Serviço: `TB_SERVICO.nomserv` | ❌ |
 | `ID_ITCP_GRUPO_MATERIAL` | ✅ | ✅ | ✅ (`codgrpmat`) | ❌ |
 | `ID_ITCP_GRUPO_SERVICO` | ✅ | ✅ | ✅ (`codgrpserv`) | ❌ |
-| `ID_ITCP_CLASSE_MAT_SERV` | ✅ | ✅ | ✅ (`codclassemat`) | ❌ |
+| `ID_ITCP_CLASSE_MAT_SERV` | ✅ | ✅ | ⚠️ Material: `codclassemat`; Serviço: nula na view (pode vir do catálogo do Siasg DW pelo `codserv`, mas é inválida em 39,4% dos casos) | ❌ |
 | `ID_ITCP_TP_MATERIAL_SERVICO` | ✅ | ✅ | ❌ | ❌ |
+| `ID_ITCP_PADRAO_DESC_MAT` (PDM) | A verificar | ✅ | ✅ Material: `codconjmat` (51,7% dos itens encontrados na tabela de PDM do Siasg DW) | ❌ |
+
+> **Atenção (13/10/2026):** a coluna `codigo_item_catalogo` da `vw_itens_consolidada_sc` mistura dois significados. No FaseExterna e no Siasg DW, ela contém o código do **item**; no Comprasnet (materiais), contém o código do **PDM**. O mesmo número pode representar objetos diferentes conforme a fonte, e qualquer agrupamento por esse campo entre fontes fica incorreto. Ver §17.4.6.
 
 #### 17.4.5 Desambiguação de Material/Serviço — `D_ITCP_MATERIAL_SERVICO` não é única
 
@@ -1998,6 +2002,159 @@ LEFT JOIN D_ITCP_MATERIAL_SERVICO AS mat_serv
 ```
 
 **Por que o Siasg DW não tem esse problema:** No DW, a tabela fato `F_ITEM_COMPRA` usa `ID_ITCP_TP_COD_MAT_SERV` como FK — essa coluna **já inclui o tipo** na chave, então o JOIN é 1:1 por natureza.
+
+#### 17.4.6 Validação Empírica do Catálogo (13/10/2026)
+
+> **Motivação:** verificar se as fontes de itens permitem agrupar compras pelo objeto comprado, requisito para identificar objetos homogêneos comprados de forma pulverizada.
+
+##### Códigos negativos na tabela de classes do Siasg DW
+
+A `D_ITCP_CLASSE_MAT_SERV` tem três classes sentinela, todas incluídas em 07/04/2024:
+
+| `ID_ITCP_CLASSE_MAT_SERV` | `DS_ITCP_CLASSE_MAT_SERV` |
+|---|---|
+| -7 | INVALIDO |
+| -8 | NAO INFORMADO |
+| -9 | NAO SE APLICA |
+
+##### Serviços do Comprasnet: o código individual existe
+
+O `codserv` da `tb_compras_serv` é o código do serviço individual. A `vw_itens_comprasnet_sc` já o usa no JOIN com a `tb_servico` para obter a descrição (`nomserv`), mas não o projeta: na CTE `itens_servico`, o código do item sai como `NULL AS codconjmat` e a classe como `NULL AS codclassemat`.
+
+Medição em SC (`db_compras`, compras de 2021 em diante, versão mais recente de cada item):
+
+| Indicador | Resultado |
+|---|---|
+| Itens de serviço | 10.732 |
+| Com `codserv` preenchido | 10.732 (100%) |
+| Serviços distintos | 538 |
+| Encontrados na `tb_servico` | 10.732 (100%) |
+| Encontrados no catálogo de serviços do Siasg DW (`ID_ITCP_GRUPO_SERVICO > 0`) | 10.704 (99,7%) |
+
+Numa amostra de 30 itens, as descrições do Comprasnet e do catálogo do Siasg DW descrevem o mesmo serviço, com diferenças apenas de acentuação, caixa e detalhamento (por exemplo, "Exame de Sangue (HEMOGRAMA)" e "EXAME DE SANGUE").
+
+##### Serviços: classe inválida no próprio catálogo
+
+| Fonte (SC) | Com classe | Classe -7 (inválida) | Fora do catálogo |
+|---|---|---|---|
+| Comprasnet | 6.473 itens (60,3%), 374 serviços | 4.231 itens (39,4%), 157 serviços | 28 itens (0,3%), 7 serviços |
+| FaseExterna | 5.243 itens (58,3%) | 3.695 itens (41,1%) | 51 itens (0,6%) |
+
+A classe inválida é uma limitação do catálogo do Siasg DW, e não das views, e atinge serviços típicos de contratação recorrente, como vigilância, limpeza e conservação, manutenção predial, pequenas obras e pintura, roçada e manutenção de extintores.
+
+**Consequência:** para serviços, o agrupamento pelo código individual é confiável; o agrupamento por classe deixa de fora cerca de 40% dos itens.
+
+##### Materiais do FaseExterna: catálogo consistente
+
+| Fonte (SC) | Com classe | Fora do catálogo |
+|---|---|---|
+| FaseExterna | 55.458 itens (95,3%) | 2.733 itens (4,7%) |
+
+##### Materiais do Comprasnet: o `codconjmat` é o código do PDM
+
+**Comparação com o catálogo de itens do Siasg DW:**
+
+| Situação | Itens | % |
+|---|---|---|
+| Fora do catálogo de itens | 65.825 | 90,1% |
+| Encontrados | 7.249 | 9,9% |
+
+Os 9,9% encontrados são coincidências numéricas. Numa amostra, o mesmo código correspondia a objetos sem relação:
+
+| `codconjmat` | Descrição no Comprasnet | Descrição no catálogo de itens do Siasg DW |
+|---|---|---|
+| 14605 | VESTUÁRIO PROTEÇÃO | ARMAZENAMENTO DE GRAO - EM SILO (serviço) |
+| 19690 | ARROZ BENEFICIADO | FUSAO FIBRA OPTICA (serviço) |
+| 6360 | DIVÃ CLÍNICO | AMIDO |
+| 8400 | INSTRUMENTAL ORTODÔNTICO | GARFO DE MULTIAPLICACAO |
+
+**Comparação com a tabela de PDM do Siasg DW (`D_ITCP_PADRAO_DESC_MAT`):**
+
+| Indicador | Resultado |
+|---|---|
+| Itens de material | 73.074 |
+| Códigos distintos | 4.759 |
+| Encontrados na tabela de PDM | 37.767 (51,7%) |
+| Com descrição idêntica (sem considerar acentos e caixa) | 37.075 (98,2% dos encontrados) |
+
+Os casos encontrados com descrição diferente são o mesmo objeto com variações de redação, por exemplo:
+
+| `codconjmat` | Descrição no Comprasnet | Descrição do PDM no Siasg DW |
+|---|---|---|
+| 18088 | RÉGUA USO MÉDICO | RÉGUA |
+| 18113 | PROTETOR RADIOLÓGICO - TIPO VESTUÁRIO | PROTETOR RADIOLÓGICO |
+| 14487 | DESINFETANTE SANEANTE | DESINFETANTE |
+| 10351 | ´PÃO´ | "PÃO" |
+
+**Conclusão:** o `codconjmat` é o código do **PDM** (padrão descritivo de material), que agrupa vários itens, e não o código do item individual. A classe e o grupo dos materiais do Comprasnet **não** são afetados, porque vêm dos campos próprios da tabela (`codclassemat`, `codgrpmat`).
+
+**Em aberto:** 48,3% dos itens têm um `codconjmat` ausente da tabela de PDM do Siasg DW. A causa não foi investigada (P9).
+
+> **Observação sobre o tipo de dado:** o `ID_ITCP_PADRAO_DESC_MAT` é texto (`varchar(5)`, §17.5.1) e tem códigos alfanuméricos (por exemplo, `'AAADH'`). A comparação com o `codconjmat` deve ser feita como texto; um `TRY_CAST` do lado do `codconjmat` não basta, porque o SQL Server tenta converter a coluna do PDM para número e falha.
+
+##### Implicações para a harmonização
+
+1. A coluna `codigo_item_catalogo` da consolidada de itens mistura código de item (FaseExterna, Siasg DW) e código de PDM (Comprasnet, materiais).
+2. Para materiais, o nível comum entre as três fontes tende a ser o **PDM**: o Comprasnet já vem nesse nível, e o FaseExterna e o Siasg DW podem ser levados até ele pelo catálogo do Siasg DW. Proposta não testada.
+3. Para serviços, que não têm PDM, o nível comum é o **código do serviço individual**, consistente entre Comprasnet e FaseExterna.
+
+> **Observação sobre o escopo das medições do Comprasnet:** foram feitas apenas no `db_compras`, sem a união com o `db_compras_sigiloso`. Os percentuais não devem mudar de forma relevante, mas os totais de itens podem ser ligeiramente maiores na view.
+
+##### Consulta de verificação do PDM (reutilizável)
+
+```sql
+WITH materiais AS (
+    SELECT
+        m.codconjmat,
+        ROW_NUMBER() OVER (
+            PARTITION BY m.coduasg, m.modprp, m.numprp, m.codGrupo, m.item
+            ORDER BY m.dataAlteracao DESC
+        ) AS rn
+    FROM db_compras.comprasnet.tb_compras_mat AS m
+    INNER JOIN temp_CGUSC.dbo.vw_jurisdicionadas_sc AS j
+        ON j.UASG = m.coduasg
+    WHERE TRY_CAST(RIGHT(CAST(m.numprp AS VARCHAR), 4) AS INT) >= 2021
+),
+pdm AS (
+    SELECT ID_ITCP_PADRAO_DESC_MAT, MAX(DS_ITCP_PADRAO_DESC_MAT) AS ds_pdm
+    FROM db_dwsiasg.dbo.D_ITCP_PADRAO_DESC_MAT
+    GROUP BY ID_ITCP_PADRAO_DESC_MAT
+)
+SELECT
+    mt.codconjmat,
+    mat.nomconjmat,
+    p.ds_pdm,
+    CASE WHEN p.ID_ITCP_PADRAO_DESC_MAT IS NOT NULL THEN 1 ELSE 0 END AS acha_pdm,
+    CASE WHEN LTRIM(RTRIM(mat.nomconjmat)) COLLATE Latin1_General_CI_AI
+            = LTRIM(RTRIM(p.ds_pdm)) COLLATE Latin1_General_CI_AI
+         THEN 1 ELSE 0 END AS descricao_igual
+INTO #comparacao_pdm
+FROM materiais AS mt
+LEFT JOIN db_compras.comprasnet.tb_material AS mat
+    ON mat.codconjmat = mt.codconjmat
+LEFT JOIN pdm AS p
+    ON LTRIM(RTRIM(p.ID_ITCP_PADRAO_DESC_MAT)) = CAST(mt.codconjmat AS VARCHAR(10))
+WHERE mt.rn = 1;
+
+-- Resumo
+SELECT
+    COUNT(*)                   AS itens,
+    COUNT(DISTINCT codconjmat) AS codigos_distintos,
+    SUM(acha_pdm)              AS encontrado_pdm,
+    SUM(descricao_igual)       AS descricao_igual
+FROM #comparacao_pdm;
+
+-- Amostra dos casos encontrados com descrição diferente
+SELECT TOP 30 *
+FROM (
+    SELECT DISTINCT codconjmat, nomconjmat, ds_pdm
+    FROM #comparacao_pdm
+    WHERE acha_pdm = 1 AND descricao_igual = 0
+) AS x
+ORDER BY NEWID();
+
+DROP TABLE #comparacao_pdm;
+```
 
 ### 17.5 Considerações Técnicas para Consultas ao Siasg DW (Itens)
 
@@ -2352,6 +2509,13 @@ ORDER BY v.objeto;
 | Setembro/2026 | 2.0.12 | Correção de documentação: a lista da §17.2.8 recuperou o item "Contagens" e a remissão ao §5.2.1, deslocados na edição de julho |
 | Setembro/2026 | 2.0.12 | Performance da consulta de licitações: pendência resolvida. A `db_pncp.dbo.compra` (3.835.936 linhas) tinha só o índice clustered em `id`, e o `OUTER APPLY` correlacionado de `Consulta_LicitacoesSC_PBI` varria a tabela por licitação (degradação observada: 28 min). Criado o índice `ix_compra_unidade_numero_ano` em `(unidadeorgaoid, numerocompra, anocompra) INCLUDE (sequencialcompra)`, que cobre as colunas da correlação |
 | 30/09/2026 | **2.0.12** | **Implantação em produção** de `vw_itens_faseexterna_sc`, `vw_itens_comprasnet_sc` e `sp_itens_licitacoes_pbi`, com verificação OK nas cinco checagens de código (§17.7.6) |
+| 05/10/2026 | 2.0.12 | Correção de documentação: o exemplo do §17.2.8 (Pregão 90014/2025, UASG 158517) rotulava o cabeçalho `-8` como Grupo 8. Pela `descricao`, é o **Grupo 1**; a compra tem 8 grupos, numerados em ordem inversa. Pendência P2 encerrada |
+| 05/10/2026 | 2.0.12 | Verificação: o campo `item.tipo` continua equivalente ao sinal do `numero_item` na tabela inteira. 215.245 linhas `'G'`, todas negativas; 5.977.624 `'I'` e 1.908.715 `'S'`, todas com número zero ou positivo; nenhum outro valor de `tipo`, nem NULL (pendência P3) |
+| 13/10/2026 | 2.0.12 | Nova pendência P8: colisão de `Cod_licitacao` no PNCP quando o `numerocompra` não é numérico. Não ocorre em SC hoje, mas deve ser tratada antes da consolidação nacional |
+| 13/10/2026 | 2.0.12 | Verificação do catálogo nos itens de serviço do Comprasnet: o `codserv` existe em 100% dos itens de SC e é compatível com o catálogo do Siasg DW em 99,7%, mas a view não o projeta. Corrigidos os §17.1, §17.4.3 e §17.4.4, que davam os serviços como sem código individual (§17.4.6) |
+| 13/10/2026 | 2.0.12 | Verificação: o `codconjmat` dos materiais do Comprasnet é o código do **PDM**, e não do item. No catálogo de itens do Siasg DW, 90,1% dos códigos não existem e os demais são coincidências numéricas; na tabela de PDM, 51,7% dos itens são encontrados, com descrição idêntica em 98,2% deles. Corrigido o §17.4.3, que dava o `codconjmat` como compatível com o código do item (§17.4.6) |
+| 13/10/2026 | 2.0.12 | Verificação: a classe dos serviços é inválida (-7, "INVALIDO") no catálogo do Siasg DW em 39,4% dos itens do Comprasnet e 41,1% dos itens do FaseExterna em SC. Materiais do FaseExterna: 95,3% com classe válida (§17.4.6) |
+| 13/10/2026 | 2.0.12 | Nova pendência P9: catálogo de materiais e serviços |
 
 #### Pendências abertas em 2.0.12
 
@@ -2359,15 +2523,16 @@ Resumo em tabela; o contexto e a forma de verificar cada item estão no detalham
 
 | Item | Descrição |
 |---|---|
-| Exemplo §17.2.8 | O cabeçalho `-8` do Pregão 90014/2025 provavelmente é o **Grupo 1**, não o 8. Conferir a `descricao` e corrigir |
-| Campo `tipo` da tabela `item` | Existe campo explícito (`'I'`/`'G'`/`'S'`) para identificar cabeçalho. Verificado: todo `numero_item < 0` tem `tipo = 'G'`, e não há `tipo = 'G'` com `numero_item >= 0`. Os critérios são equivalentes; avaliar migrar do proxy do sinal para o campo explícito |
+| Campo `tipo` da tabela `item` | Existe campo explícito (`'I'`/`'G'`/`'S'`) para identificar cabeçalho. Equivalência com o sinal do `numero_item` confirmada de novo em 05/10/2026, sem nenhuma divergência. Falta só decidir se vale migrar do proxy do sinal para o campo explícito |
 | Colisão de links PNCP | A correlação do `OUTER APPLY` em `Consulta_LicitacoesSC_PBI` usa UASG + número + ano, sem modalidade. Pela **§16.1**, isso é correto do lado do PNCP: sob a Lei 14.133/2021 a numeração é sequencial única por CNPJ+ano, independente de modalidade. O resíduo está do **lado do ComprasGov**, cuja chave é UASG + modalidade + número + ano: duas contratações de mesma UASG, ano e número, mas modalidades diferentes, casariam com o mesmo registro do PNCP. Medir com `HAVING COUNT(DISTINCT Modalidade) > 1` sobre a consolidada |
 | Concluir a implantação | Implantada em 30/09/2026. Faltam: registrar a contagem do "Grupo 0" em produção e remover os objetos `_hml` (§17.7.5, §17.7.6) |
 | Hierarquia de valores em itens não agrupados | Avaliar se a proposta do vencedor também deve vir antes do melhor valor para itens `'I'` (§17.2.10). Não testado |
 | Coluna `item_adjudicado_gerado` (agosto/2026) | Com os subitens de grupo passando a ter fornecedor e valor, reavaliar se a coluna ainda é necessária |
 | Totais no painel | Desativar o total das colunas de valor unitário nas tabelas de detalhe de itens (§17.7.4) |
+| Colisão de `Cod_licitacao` no PNCP (consolidação nacional) | O `Cod_licitacao` do PNCP troca por `0` o `numerocompra` não numérico, e duas compras da mesma UASG, modalidade e ano podem receber o mesmo código. Não ocorre em SC (medição de 13/10/2026), mas deve ser tratada antes da consolidação nacional (P8) |
+| Catálogo de materiais e serviços (P9) | O `codconjmat` do Comprasnet é código de PDM, e não de item, mas sai na mesma coluna `codigo_item_catalogo` que contém códigos de item nas outras fontes. O `codserv` dos serviços existe e é compatível com o catálogo do Siasg DW, mas não é exposto na view. A classe dos serviços é inválida (-7) em cerca de 40% dos itens, no próprio catálogo (§17.4.6) |
 
-#### Detalhamento das pendências abertas (situação em 30/09/2026)
+#### Detalhamento das pendências abertas (situação em 05/10/2026)
 
 Esta subseção guarda o contexto de cada pendência, para que possam ser retomadas sem depender de memória: o que motivou, o que já se sabe, o que falta saber e como verificar.
 
@@ -2382,16 +2547,14 @@ Esta subseção guarda o contexto de cada pendência, para que possam ser retoma
 
 ##### P2. Exemplo do §17.2.8 (Pregão 90014/2025, UASG 158517)
 
-- **Origem:** o exemplo foi escrito antes da descoberta de que os cabeçalhos de grupo são numerados em ordem inversa (§17.2.4) e rotula o cabeçalho `-8` como "Grupo 8".
-- **O que falta saber:** o número real do grupo. Se a licitação tiver 8 grupos, o `-8` é o **Grupo 1**.
-- **Como verificar:** ler a `descricao` do cabeçalho `numero_item = -8` dessa compra na tabela `item` do FaseExterna (padrão `'Grupo N'`) e corrigir a tabela do exemplo.
+- **Encerrada em 05/10/2026.** A `descricao` do cabeçalho `-8` é `'Grupo 1'`; a compra tem 8 grupos, de 2 subitens cada, numerados em ordem inversa. O exemplo do §17.2.8 foi corrigido.
 
 ##### P3. Campo `tipo` da tabela `item` no lugar do sinal do `numero_item`
 
 - **Origem:** as views e a SP identificam cabeçalho de grupo por `numero_item < 0`. A tabela `item` tem um campo explícito, `tipo` (`'I'`, `'G'`, `'S'`).
-- **O que já se sabe:** verificado em julho/2026 que todo `numero_item < 0` tem `tipo = 'G'` e que não há `tipo = 'G'` com `numero_item >= 0`. Hoje os dois critérios são equivalentes.
+- **O que já se sabe:** verificado em julho/2026 e de novo em 05/10/2026, na tabela `item` inteira (todas as versões). Todo `numero_item < 0` tem `tipo = 'G'`, e não há `tipo = 'G'` com `numero_item >= 0`. Distribuição em 05/10/2026: 215.245 `'G'` (negativos), 5.977.624 `'I'` e 1.908.715 `'S'` (zero ou positivos); nenhum outro valor de `tipo`, nem NULL.
 - **O que falta:** uma decisão, não uma verificação. O campo explícito é mais legível e não depende de uma convenção de numeração; em troca, é mais uma alteração em objetos que acabaram de ser implantados.
-- **Como verificar antes de migrar:** repetir a checagem de equivalência com os dados atuais.
+- **Se decidir migrar:** repetir a checagem de equivalência imediatamente antes, e homologar como na v2.0.12 (§17.7.2).
 
 ##### P4. Colisão de links do PNCP
 
@@ -2414,3 +2577,39 @@ Esta subseção guarda o contexto de cada pendência, para que possam ser retoma
 
 - **Situação:** implantada em produção em 30/09/2026, com OK nas cinco verificações de código (§17.7.6).
 - **Falta:** (1) registrar o resultado da contagem de itens no "Grupo 0" da `vw_itens_comprasnet_sc` em produção (esperado: 0; antes da implantação: 73.186); (2) remover os objetos `_hml` com o script de remoção, caso ainda existam; (3) descartar a cópia do painel que aponta para a SP `_hml`, que deixa de funcionar depois da remoção.
+
+##### P8. Colisão de `Cod_licitacao` no PNCP (consolidação nacional)
+
+- **Origem (13/10/2026):** levantada durante o desenho da view de itens do PNCP. Essa view precisa gerar o `Cod_licitacao` com a mesma fórmula da `vw_disp_inex_pncp_sc`, para que o relacionamento entre itens e licitações funcione no Power BI.
+- **Mecanismo:** o `numerocompra` do PNCP é texto livre (§16.6). A fórmula do código usa `COALESCE(TRY_CAST(c.numerocompra AS INT), 0)`: quando o número não é numérico, entra `0`. Duas compras da mesma UASG, modalidade e ano com número despadronizado (por exemplo, `DL 1` e `DL 2`) receberiam o mesmo `Cod_licitacao`, e seus itens e valores se misturariam numa única licitação no painel.
+- **Segundo ponto da mesma fórmula:** o trecho número + ano é cortado em 9 posições (`RIGHT(..., 9)`). Um número numérico com mais de 5 dígitos perde os primeiros algarismos e pode coincidir com o código de outra compra. Não foi medido.
+- **O que já se sabe:** em SC, o problema não ocorre hoje. Medição de 13/10/2026 na `vw_disp_inex_pncp_sc`: 4.640 linhas, 4.640 códigos distintos e nenhum `numero_compra` NULL, ou seja, nenhum número não numérico.
+- **Por que importa:** os exemplos do §16.6 (`"060301/2024"`, `"10 | Processo 212024"`, `"DL 1"`) mostram que números despadronizados existem na base nacional do PNCP. Na consolidação nacional, o volume de compras é muito maior.
+- **Como verificar (base nacional):** antes de definir a chave da consolidação nacional, medir quantas compras têm número não numérico ou com mais de 5 dígitos. Ampliar o filtro de modalidade se a consolidação nacional usar outras modalidades do PNCP.
+
+```sql
+SELECT
+    COUNT(*) AS compras,
+    SUM(CASE WHEN TRY_CAST(c.numerocompra AS INT) IS NULL THEN 1 ELSE 0 END) AS numero_nao_numerico,
+    SUM(CASE WHEN TRY_CAST(c.numerocompra AS INT) > 99999 THEN 1 ELSE 0 END) AS numero_acima_de_5_digitos
+FROM db_pncp.dbo.compra c
+WHERE c.excluido = 'f'
+  AND c.modalidadeid IN (8, 9)
+  AND YEAR(c.datapublicacaopncp) >= 2022;
+```
+
+- **Tratamento:** a definir. [Não verificado] Duas linhas possíveis, ainda não testadas: (1) usar o `id` da compra no PNCP como chave de relacionamento entre itens e licitações dessa fonte, mantendo o `Cod_licitacao` só para exibição; (2) usar o `sequencialcompra` (§16.7) no lugar do `numerocompra` quando este não for numérico, verificando antes se ele não coincide com o número de outra compra da mesma UASG. Qualquer opção altera a chave do PNCP nas views de licitações e de itens e deve ser homologada como no §17.7.2.
+
+##### P9. Catálogo de materiais e serviços
+
+- **Origem (13/10/2026):** verificação de se as fontes permitem agrupar compras pelo objeto comprado (§17.4.6).
+- **O que já se sabe:**
+  - **Serviços do Comprasnet:** o `codserv` existe em 100% dos itens de SC e é compatível com o catálogo do Siasg DW em 99,7% deles; a view só não o projeta.
+  - **Materiais do Comprasnet:** o `codconjmat` é o código do PDM, e não do item. Quando encontrado na tabela de PDM do Siasg DW, a descrição bate em 98,2% dos itens.
+  - **Serviços em geral:** a classe é inválida (-7) no próprio catálogo do Siasg DW em cerca de 40% dos itens, tanto no Comprasnet quanto no FaseExterna.
+- **O que falta:**
+  1. Investigar por que 48,3% dos itens de material do Comprasnet têm um `codconjmat` ausente da tabela de PDM do Siasg DW.
+  2. Decidir como separar os significados na `vw_itens_comprasnet_sc`: por exemplo, código do PDM numa coluna própria e `codigo_item_catalogo` nulo para materiais, ou com o `codserv` para serviços.
+  3. Para serviços do Comprasnet, buscar a classe no catálogo do Siasg DW pelo `codserv`, sabendo que parte virá inválida.
+  4. Verificar se o FaseExterna traz o PDM dos materiais pelo catálogo do Siasg DW, para viabilizar o agrupamento por PDM entre as três fontes.
+- **Homologação:** qualquer alteração nas views segue o procedimento do §17.7.2.
