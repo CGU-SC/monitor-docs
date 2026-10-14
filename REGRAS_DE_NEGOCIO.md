@@ -2528,6 +2528,7 @@ ORDER BY v.objeto;
 | 13/10/2026 | 2.0.12 | Verificação: a classe dos serviços é inválida (-7, "INVALIDO") no catálogo do Siasg DW em 39,4% dos itens do Comprasnet e 41,1% dos itens do FaseExterna em SC. Materiais do FaseExterna: 95,3% com classe válida (§17.4.6) |
 | 13/10/2026 | 2.0.12 | Nova pendência P9: catálogo de materiais e serviços |
 | 13/10/2026 | 2.0.12 | Documentação: novo §16.1.1, com os motivos para o PNCP ser usado apenas em Dispensas e Inexigibilidades (qualidade dos dados enviados por órgãos e plataformas integradas; formato do `Cod_licitacao`). O uso para as demais modalidades fica para atualização futura |
+| 14/10/2026 | 2.0.12 | Nova pendência P10: atualização da nomenclatura (FaseExterna → ComprasGov; eAud → eCGU) |
 
 #### Pendências abertas em 2.0.12
 
@@ -2543,6 +2544,7 @@ Resumo em tabela; o contexto e a forma de verificar cada item estão no detalham
 | Totais no painel | Desativar o total das colunas de valor unitário nas tabelas de detalhe de itens (§17.7.4) |
 | Colisão de `Cod_licitacao` no PNCP (consolidação nacional) | O `Cod_licitacao` do PNCP troca por `0` o `numerocompra` não numérico, e duas compras da mesma UASG, modalidade e ano podem receber o mesmo código. Não ocorre em SC (medição de 13/10/2026), mas deve ser tratada antes da consolidação nacional (P8) |
 | Catálogo de materiais e serviços (P9) | O `codconjmat` do Comprasnet é código de PDM, e não de item, mas sai na mesma coluna `codigo_item_catalogo` que contém códigos de item nas outras fontes. O `codserv` dos serviços existe e é compatível com o catálogo do Siasg DW, mas não é exposto na view. A classe dos serviços é inválida (-7) em cerca de 40% dos itens, no próprio catálogo (§17.4.6) |
+| Nomenclatura das fontes (P10) | Substituir "FaseExterna" por "ComprasGov" e "eAud" por "eCGU" em todo o projeto. Antes, separar o que é texto do projeto (renomeável) do que é nome de objeto das bases de origem (não renomeável) |
 
 #### Detalhamento das pendências abertas (situação em 05/10/2026)
 
@@ -2625,3 +2627,18 @@ WHERE c.excluido = 'f'
   3. Para serviços do Comprasnet, buscar a classe no catálogo do Siasg DW pelo `codserv`, sabendo que parte virá inválida.
   4. Verificar se o FaseExterna traz o PDM dos materiais pelo catálogo do Siasg DW, para viabilizar o agrupamento por PDM entre as três fontes.
 - **Homologação:** qualquer alteração nas views segue o procedimento do §17.7.2.
+
+##### P10. Atualização da nomenclatura: FaseExterna → ComprasGov e eAud → eCGU
+
+- **Origem (14/10/2026):** padronizar os nomes usados no projeto. "FaseExterna" passa a ser "ComprasGov", e "eAud" (ou "e-Aud") passa a ser "eCGU".
+- **Onde aparece:**
+  - Texto deste documento: títulos, tabelas, notas e histórico.
+  - Objetos do projeto: `vw_licitacoes_faseexterna_sc`, `vw_itens_faseexterna_sc` e `vw_alice_eaud_integracao_sc`.
+  - Valores de dados: `'FASEEXTERNA'` nos campos `fonte_dados` e `data_publicacao_fonte` (§13.1, §14.2).
+  - Nomes de arquivos, como `02_-_vw_licitacoes_faseexterna_sc.sql` e `07_-_vw_itens_faseexterna_sc.sql`.
+- **O que não pode ser renomeado:** objetos das bases de origem, que não pertencem ao projeto: o schema `db_compras.ComprasGov_FaseExterna` e a tabela `eaud_integracao` do `db_alice_consulta`. Nos trechos de SQL que os referenciam, o nome fica como está.
+- **Cuidados:**
+  - Renomear views exige atualizar os objetos que as referenciam (consolidadas e `sp_itens_licitacoes_pbi`) e homologar como no §17.7.2.
+  - Trocar o valor `'FASEEXTERNA'` afeta filtros, medidas DAX e segmentações do Power BI que dependam dele.
+  - A substituição não pode ser automática: "ComprasGov" já aparece no documento em outros contextos (§2.1 e link do ComprasGov no §16.7), e o documento hoje escreve "e-CGU", com hífen.
+- **Em aberto:** definir o escopo: só o documento, ou também objetos SQL, valores de dados e o painel.
