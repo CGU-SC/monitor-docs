@@ -1232,6 +1232,17 @@ O PNCP é a **quarta fonte de dados** do sistema, utilizada exclusivamente para 
 >
 > **Implicação:** Não há risco de colisão de `numero_compra` entre modalidades diferentes no PNCP — cada número é único para o par CNPJ+ano.
 
+#### 16.1.1 Por que o PNCP é usado apenas para Dispensas e Inexigibilidades
+
+O PNCP entra na consolidação só para cobrir lacunas das outras fontes. O FaseExterna não tem Inexigibilidades, muitas Dispensas estão apenas no PNCP e o Siasg DW parou de ser atualizado em abril/2024.
+
+Nas demais modalidades, o PNCP ainda não é usado como fonte de licitações, por dois motivos:
+
+1. **Qualidade dos dados.** O envio das informações ao PNCP é responsabilidade de cada órgão e das plataformas integradas ao portal. Não há um sistema único que gere os dados, e já foram encontrados diversos casos de valores preenchidos de forma errada.
+2. **Formato do `Cod_licitacao`.** O código reserva 5 posições para o número da compra, que é o tamanho usado no FaseExterna, no Comprasnet e no Siasg (§3.3). No PNCP, o `numerocompra` é texto livre (§16.6): pode ter mais de 5 dígitos ou nem ser numérico. Ampliar o código exigiria alterar as views de licitações e de itens de todas as fontes, os anti-joins entre fontes (feitos pelo `Cod_licitacao`), o relacionamento entre `LicitacoesConsol` e `ItensConsol` no Power BI e o link do ComprasGov na `Consulta_LicitacoesSC_PBI`, que é montado concatenando o próprio `Cod_licitacao` (§16.7).
+
+**Decisão:** o uso do PNCP para as demais modalidades fica para uma atualização futura (ver pendência P8).
+
 ### 16.2 Mapeamento de Modalidades
 
 | Código PNCP | Nome PNCP | Código Normalizado | Nome Normalizado |
@@ -2516,6 +2527,7 @@ ORDER BY v.objeto;
 | 13/10/2026 | 2.0.12 | Verificação: o `codconjmat` dos materiais do Comprasnet é o código do **PDM**, e não do item. No catálogo de itens do Siasg DW, 90,1% dos códigos não existem e os demais são coincidências numéricas; na tabela de PDM, 51,7% dos itens são encontrados, com descrição idêntica em 98,2% deles. Corrigido o §17.4.3, que dava o `codconjmat` como compatível com o código do item (§17.4.6) |
 | 13/10/2026 | 2.0.12 | Verificação: a classe dos serviços é inválida (-7, "INVALIDO") no catálogo do Siasg DW em 39,4% dos itens do Comprasnet e 41,1% dos itens do FaseExterna em SC. Materiais do FaseExterna: 95,3% com classe válida (§17.4.6) |
 | 13/10/2026 | 2.0.12 | Nova pendência P9: catálogo de materiais e serviços |
+| 13/10/2026 | 2.0.12 | Documentação: novo §16.1.1, com os motivos para o PNCP ser usado apenas em Dispensas e Inexigibilidades (qualidade dos dados enviados por órgãos e plataformas integradas; formato do `Cod_licitacao`). O uso para as demais modalidades fica para atualização futura |
 
 #### Pendências abertas em 2.0.12
 
