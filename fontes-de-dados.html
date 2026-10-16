@@ -21,7 +21,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Out/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -168,6 +168,19 @@
       <span class="callout-icon">⚠️</span>
       <div><strong>TBL_PROPOSTAITEM indisponível na CGU:</strong> A tabela com fornecedores adjudicados e valores por item não existe em <code>db_compras</code>. Por isso o Siasg DW é 2ª prioridade para itens — ele tem esses dados para licitações até abril/2024.</div>
     </div>
+
+    <h3 class="sub-title">Classificação dos itens (verificada em 13/10/2026)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tipo</th><th>Campo</th><th>O que é</th><th>Correspondência no Siasg DW</th></tr></thead>
+        <tbody>
+          <tr><td>Material</td><td><code>codconjmat</code></td><td>Código do <strong>PDM</strong> (padrão descritivo), que agrupa vários itens — não é o item individual</td><td><code>ID_ITCP_PADRAO_DESC_MAT</code>: 51,7% encontrados, descrição idêntica em 98,2% deles. No catálogo de itens, 90,1% não existem e o resto são coincidências numéricas</td></tr>
+          <tr><td>Material</td><td><code>codgrpmat</code>, <code>codclassemat</code></td><td>Grupo e classe</td><td>Compatíveis (mesma origem: SIASG mainframe)</td></tr>
+          <tr><td>Serviço</td><td><code>codserv</code></td><td>Código do serviço individual, presente em 100% dos itens de SC</td><td><code>ID_ITCP_MATERIAL_SERVICO</code> (serviços): compatível em 99,7%. A view usa o <code>codserv</code> para a descrição, mas não o projeta</td></tr>
+          <tr><td>Serviço</td><td><code>codgrpserv</code></td><td>Grupo</td><td>Compatível</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="section">
@@ -207,7 +220,19 @@
     <div class="section-eyebrow">4ª Prioridade — Apenas Disp./Inex.</div>
     <h2 class="section-title"><em>PNCP</em></h2>
     <p class="section-desc">Única fonte atualizada para Dispensas e Inexigibilidades recentes. Modalidades 8 e 9 no PNCP são normalizadas para os códigos 6 e 7 usados no restante do sistema.</p>
-    <div class="callout callout-info"><span class="callout-icon">ℹ️</span><div><strong>PNCP é exclusivo da Lei 14.133/2021</strong> (Nova Lei de Licitações). Licitações da lei anterior (8.666 e 10.520) não aparecem no PNCP — por isso ele é 4ª prioridade e só complementa o que as outras fontes não têm. A numeração do PNCP é sequencial por CNPJ + ano, diferente dos códigos de modalidade das outras fontes, o que evita colisões de identificadores.</div></div>
+    <div class="callout callout-info"><span class="callout-icon">ℹ️</span><div><strong>PNCP é exclusivo da Lei 14.133/2021</strong> (Nova Lei de Licitações). Licitações da lei anterior (8.666 e 10.520) não aparecem no PNCP. A numeração do PNCP é sequencial por CNPJ + ano, independente da modalidade, o que evita colisões de numeração entre modalidades.</div></div>
+
+    <h3 class="sub-title">Por que só Dispensas e Inexigibilidades (§16.1.1)</h3>
+    <p class="section-desc" style="margin-bottom:12px;">O PNCP entra na consolidação só para cobrir lacunas das outras fontes: o FaseExterna não tem Inexigibilidades, muitas Dispensas estão apenas no PNCP e o Siasg DW parou de ser atualizado em abril/2024. Nas demais modalidades, ele não é usado como fonte de licitações, por dois motivos:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Motivo</th><th>Detalhe</th></tr></thead>
+        <tbody>
+          <tr><td>Qualidade dos dados</td><td>O envio ao PNCP é responsabilidade de cada órgão e das plataformas integradas ao portal. Não há um sistema único que gere os dados, e já foram encontrados diversos casos de valores preenchidos de forma errada.</td></tr>
+          <tr><td>Formato do <code>Cod_licitacao</code></td><td>O código reserva 5 posições para o número da compra, o tamanho usado no FaseExterna, no Comprasnet e no Siasg. No PNCP, o <code>numerocompra</code> é texto livre: pode ter mais de 5 dígitos ou nem ser numérico. Ampliar o código exigiria alterar as views de todas as fontes, os anti-joins, o relacionamento entre <code>LicitacoesConsol</code> e <code>ItensConsol</code> no Power BI e o link do ComprasGov.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <div class="table-wrap">
       <table>
@@ -275,6 +300,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Outubro/2026</div>
 </footer>
 </body></html>

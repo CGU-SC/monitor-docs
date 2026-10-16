@@ -16,7 +16,7 @@
       <span class="brand-title">Monitor <em>de</em> Compras</span>
     </div>
   </a>
-  <div class="header-right"><span class="version-pill">v2.0.12 — Set/2026</span></div>
+  <div class="header-right"><span class="version-pill">v2.0.12 — Out/2026</span></div>
 </header>
 
 <nav class="tab-nav">
@@ -61,7 +61,7 @@
       <div class="gloss-letter">C</div>
       <div class="glossary-item">
         <div class="glossary-term">CATMAT / CATSER</div>
-        <div class="glossary-def">Catálogos federais de Materiais (CATMAT) e Serviços (CATSER) do SIASG. A classificação mais completa vem do Siasg DW via <code>D_ITCP_MATERIAL_SERVICO</code>, referenciada pelo FaseExterna (<code>codigo_item_catalogo</code>) e pelo Comprasnet (<code>codconjmat</code>).</div>
+        <div class="glossary-def">Catálogos federais de Materiais (CATMAT) e Serviços (CATSER) do SIASG. A classificação mais completa vem do Siasg DW via <code>D_ITCP_MATERIAL_SERVICO</code>, referenciada pelo FaseExterna (<code>codigo_item_catalogo</code>). No Comprasnet, o código individual existe só para serviços (<code>codserv</code>); nos materiais, o <code>codconjmat</code> é o código do PDM, e não do item.</div>
       </div>
       <div class="glossary-item">
         <div class="glossary-term">CGU / CGPLA</div>
@@ -157,11 +157,11 @@
       <div class="gloss-letter">P</div>
       <div class="glossary-item">
         <div class="glossary-term">PDM</div>
-        <div class="glossary-def">Padrão de Descrição de Material. Campo do Siasg DW (<code>D_ITCP_PADRAO_DESC_MAT</code>) que define o padrão de nomenclatura do item no catálogo federal.</div>
+        <div class="glossary-def">Padrão de Descrição de Material. Campo do Siasg DW (<code>D_ITCP_PADRAO_DESC_MAT</code>) que define o padrão de nomenclatura do item no catálogo federal. Um PDM agrupa vários itens. O <code>codconjmat</code> dos materiais do Comprasnet é um código de PDM (descrição idêntica à do Siasg DW em 98,2% dos itens encontrados). É texto (<code>varchar(5)</code>), com códigos alfanuméricos: comparar como texto.</div>
       </div>
       <div class="glossary-item">
         <div class="glossary-term">PNCP</div>
-        <div class="glossary-def">Portal Nacional de Contratações Públicas. 4ª fonte de dados. Usada exclusivamente para Dispensas e Inexigibilidades que não existem nas 3 fontes anteriores. É a única fonte atualizada para essas modalidades após o encerramento do Siasg DW (abril/2024).</div>
+        <div class="glossary-def">Portal Nacional de Contratações Públicas. 4ª fonte de dados. Usada exclusivamente para Dispensas e Inexigibilidades que não existem nas 3 fontes anteriores. É a única fonte atualizada para essas modalidades após o encerramento do Siasg DW (abril/2024). Não é usado nas demais modalidades por causa da qualidade dos dados, enviados por cada órgão e plataforma integrada, e do <code>numerocompra</code> em texto livre, incompatível com as 5 posições do <code>Cod_licitacao</code>.</div>
       </div>
       <div class="glossary-item">
         <div class="glossary-term">Possui_Sigilo</div>
@@ -277,6 +277,6 @@
 </div>
 <footer class="page-footer">
   <div>Monitor de Compras SC · <span>CGU Regional Santa Catarina</span></div>
-  <div>Documentação <span>v2.0.12</span> · Setembro/2026</div>
+  <div>Documentação <span>v2.0.12</span> · Outubro/2026</div>
 </footer>
 </body></html>
