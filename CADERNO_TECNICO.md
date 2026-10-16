@@ -1,4 +1,4 @@
-# Catálogo Técnico - Monitor de Compras SC
+# Caderno Técnico - Monitor de Compras SC
 
 ## Documento de Especificação Técnica
 **Versão:** 2.0.12 (implantada em produção em 30/09/2026)  
@@ -2529,7 +2529,7 @@ ORDER BY v.objeto;
 | 13/10/2026 | 2.0.12 | Nova pendência P9: catálogo de materiais e serviços |
 | 13/10/2026 | 2.0.12 | Documentação: novo §16.1.1, com os motivos para o PNCP ser usado apenas em Dispensas e Inexigibilidades (qualidade dos dados enviados por órgãos e plataformas integradas; formato do `Cod_licitacao`). O uso para as demais modalidades fica para atualização futura |
 | 14/10/2026 | 2.0.12 | Nova pendência P10: atualização da nomenclatura (FaseExterna → ComprasGov; eAud → eCGU) |
-| 16/10/2026 | 2.0.12 | Documentação: o documento passa a se chamar **Catálogo Técnico** (arquivo `CATALOGO_TECNICO.md`, antes `REGRAS_DE_NEGOCIO.md`), porque reúne mais do que regras de negócio: fontes, arquitetura, camada SQL, qualidade de dados, homologação e histórico |
+| 16/10/2026 | 2.0.12 | Documentação: o documento passa a se chamar **Caderno Técnico** (arquivo `CADERNO_TECNICO.md`, antes `REGRAS_DE_NEGOCIO.md`), porque reúne mais do que regras de negócio: fontes, arquitetura, camada SQL, qualidade de dados, homologação e histórico |
 
 #### Pendências abertas em 2.0.12
 
