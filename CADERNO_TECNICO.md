@@ -9,7 +9,7 @@
 
 ## 1. Visão Geral
 
-O Monitor de Compras é um painel de Business Intelligence que consolida informações sobre compras públicas das UASGs de Santa Catarina jurisdicionadas à CGU. Este documento detalha todas as regras de negócio implementadas nas views SQL que alimentam o painel.
+O Monitor de Compras é um painel de Business Intelligence que consolida informações sobre compras públicas das UASGs de Santa Catarina jurisdicionadas à CGU. Este documento reúne a especificação técnica do projeto: as regras de negócio implementadas nas views SQL que alimentam o painel, as fontes de dados, a arquitetura, a camada SQL, a qualidade de dados, os procedimentos de homologação e o histórico de alterações.
 
 ---
 
@@ -2408,7 +2408,7 @@ ORDER BY v.objeto;
 
 ## 19. Histórico de Alterações
 
-### 19.1 Versão 1.x — Primeira Geração (Abr/2024 – Dez/2025)
+### 19.1 Versão 1.x — Primeira Geração (Abr/2024 – Dez/2025; em uso até Março/2026)
 
 > **Nota:** A série 1.x utilizava arquitetura de views distinta da v2.0. As views `vw_adjudicado_comprasgov_SC` e `vw_valor_estimado_comprasgov_SC` criadas na v1.3.3 foram as precursoras diretas da integração completa do FaseExterna realizada na v2.0.
 
@@ -2427,7 +2427,7 @@ ORDER BY v.objeto;
 
 ---
 
-### 19.2 Versão 2.x — Refatoração Completa (Jan–Mar/2026)
+### 19.2 Versão 2.x — Refatoração Completa (Jan–Abr/2026)
 
 | Data | Versão | Alteração |
 |------|--------|-----------|
