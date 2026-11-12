@@ -55,7 +55,7 @@ Ordem: **FaseExterna → Siasg DW → Comprasnet**
 
 > **Nota (v2.0.12):** o PNCP **não** participa da hierarquia de itens, apesar de participar da de licitações. Não existe view de itens do PNCP. O comentário da Parte 3 da `vw_itens_consolidada_sc` registra isso: *"PRIORIDADE 4 — PNCP seria 3 mas não tem view de itens ainda"*. Versões anteriores deste documento listavam quatro fontes, o que descrevia uma intenção, não a implementação.
 
-> **→ Ver detalhes completos no §19 — Regras de Negócio de Itens** (hierarquia, anti-joins, campos disponíveis por fonte, classificação, lances, performance).
+> **→ Ver detalhes completos no §17 — Regras de Negócio de Itens** (hierarquia, anti-joins, campos disponíveis por fonte, classificação, lances, performance).
 
 ### 2.2 Bases Utilizadas
 
@@ -355,7 +355,7 @@ valor_homologado_siasg -- Campo VL_PRECO_TOTAL_HOMOLOG da view vw_valor_homologa
 
 O valor adjudicado e os dados do fornecedor vencedor no Siasg DW são obtidos via `F_ITEM_FORNECEDOR` + `D_FRND_FORNECEDOR`, com filtro `VL_PRECO_TOTAL_HOMOLOG > 0` para identificar vencedores.
 
-> **→ Ver detalhes completos no §19.3** — Fornecedor vencedor e valores adjudicados por fonte.
+> **→ Ver detalhes completos no §17.3** — Fornecedor vencedor e valores adjudicados por fonte.
 
 ---
 
@@ -1776,7 +1776,7 @@ END
 
 **Resultado:** a diferença total entre subitens e cabeçalhos caiu de R$ 6.136.866,85 para **R$ 2.856,14 (0,0004%)**. No Pregão 90024/2026, mudaram exatamente os 8 subitens que recorriam ao melhor valor (por exemplo: item 48, de R$ 250,00 para R$ 376,60; item 57, de R$ 250,00 para R$ 356,76; item 110, de R$ 0,65 para R$ 1,00).
 
-> **Por que a mudança ficou restrita aos subitens:** foi onde o problema foi medido e confirmado. [Inferência] A mesma inversão talvez faça sentido para itens não agrupados, mas isso alteraria valores já validados e não foi testado. Ver pendências (§19.3).
+> **Por que a mudança ficou restrita aos subitens:** foi onde o problema foi medido e confirmado. [Inferência] A mesma inversão talvez faça sentido para itens não agrupados, mas isso alteraria valores já validados e não foi testado. Ver pendências (§19.4).
 
 ##### Consulta de consistência (reutilizável)
 
@@ -2532,7 +2532,7 @@ ORDER BY v.objeto;
 | 14/10/2026 | 2.0.12 | Nova pendência P10: atualização da nomenclatura (FaseExterna → ComprasGov; eAud → eCGU) |
 | 16/10/2026 | 2.0.12 | Documentação: o documento passa a se chamar **Caderno Técnico** (arquivo `CADERNO_TECNICO.md`, antes `REGRAS_DE_NEGOCIO.md`), porque reúne mais do que regras de negócio: fontes, arquitetura, camada SQL, qualidade de dados, homologação e histórico |
 
-#### Pendências abertas em 2.0.12
+### 19.4 Pendências Abertas
 
 Resumo em tabela; o contexto e a forma de verificar cada item estão no detalhamento logo abaixo.
 
