@@ -2487,6 +2487,7 @@ ORDER BY v.objeto;
 | Março/2026 | 2.0.9 | Correção aplicada em `vw_itens_faseexterna_sc` e `vw_licitacoes_faseexterna_sc` (CTEs `compras_recentes` e `itens_recentes`) |
 | Março/2026 | 2.0.9 | Melhoria: `valor_proposta_calculado` adicionado como 4º fallback na hierarquia de valores adjudicados (§5.2) — resolve Concorrências com modo "Fechado" sem lances |
 | Março/2026 | 2.0.9 | Documentação: §14.5 — 10.206 licitações do FaseExterna (2%) sem itens carregados, valores zerados. Limitação de dados das fontes. |
+| Março/2026 | 2.0.9 | Entrada em produção da versão 2, em substituição à série 1.x, com uso pela equipe da CGU-R/SC. Os ajustes nas regras de negócio continuam nas versões seguintes, à medida que as bases de origem são estudadas. |
 | Abril/2026 | 2.0.10 | **Link PNCP na `Consulta_LicitacoesSC_PBI`** — URL usa `sequencialcompra` (não `numerocompra`). JOIN com `orgao` para obter CNPJ (§16.7) |
 | Abril/2026 | 2.0.10 | Documentação: §16.1 — PNCP exclusivo da Lei 14.133/2021, numeração sequencial por CNPJ+ano, sem colisão de modalidades |
 | Abril/2026 | 2.0.10 | Melhoria: `Natureza Jur. Fornecedor` agora traz descrição via JOIN com `db_cnpj.dbo.NaturezaJuridica` (§17.3.4) |
